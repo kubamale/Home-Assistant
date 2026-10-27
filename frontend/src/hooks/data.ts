@@ -29,6 +29,7 @@ export const useCalendar = () => useQuery({ queryKey: ['calendar'], queryFn: api
 export const useDevices = () => useQuery({ queryKey: ['devices'], queryFn: api.devices, ...common })
 export const useRooms = () => useQuery({ queryKey: ['rooms'], queryFn: api.rooms, ...common })
 export const useScenes = () => useQuery({ queryKey: ['scenes'], queryFn: api.scenes, ...common })
+export const useVoiceStatus = () => useQuery({ queryKey: ['voice', 'status'], queryFn: api.voiceStatus, ...common })
 export const useSettings = () => useQuery({ queryKey: ['settings'], queryFn: api.settings, ...common })
 export const useTasks = (scope: 'today' | 'all' = 'today') =>
   useQuery({ queryKey: ['tasks', scope], queryFn: () => api.tasks(scope), ...common })

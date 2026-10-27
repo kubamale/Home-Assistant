@@ -64,6 +64,7 @@ public abstract class IntegrationTest {
     @BeforeEach
     void resetState() {
         jdbc.sql("delete from task").update();
+        jdbc.sql("delete from voice_turn").update();
         jdbc.sql("delete from quick_access").update();
         jdbc.sql("delete from scene_action").update();
         jdbc.sql("delete from scene").update();

@@ -23,7 +23,7 @@ you speak → speech to text → Claude (with tools) → text answer → text to
 
 | Phase | What you get |
 | --- | --- |
-| **V1 Text agent** | The brain with all tools, usable by typing or iOS dictation in the phone app (a chat box). Weather, calendar, tasks, lights and scenes by sentence, in Polish and English. Proves the prompts and tools before any audio work. |
+| **V1 Text agent** (first slice built on `feature/voice-mode`: the chat, the tool layer, conversation memory, the audit log; still to do: aliases, the rules fast path, the spoken-detail setting, the corpus evaluation) | The brain with all tools, usable by typing or iOS dictation in the phone app (a chat box). Weather, calendar, tasks, lights and scenes by sentence, in Polish and English. Proves the prompts and tools before any audio work. |
 | **V2 Door agent, tap to talk** | The speakerphone, speech in and out at the wall: tap the microphone, speak, hear the answer. A real conversation, without wake-word risk. |
 | **V3 Hands-free** | Wake word, automatic end-of-speech detection, follow-up questions without repeating the wake word, interrupting it while it speaks. |
 | **V4 Polish** | Offline fallback for light commands, quiet hours, proactive announcements ("rain starts at 15:00"). |

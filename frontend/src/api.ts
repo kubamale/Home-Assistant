@@ -13,6 +13,8 @@ import type {
   SessionInfo,
   Settings,
   Task,
+  VoiceReply,
+  VoiceStatus,
   WeatherSnapshot,
 } from './types'
 
@@ -110,6 +112,10 @@ export const api = {
   forgetDevice: (id: string) => request<void>('DELETE', `/api/devices/${encodeURIComponent(id)}`),
   setQuickAccess: (items: PinItem[]) => request<void>('PUT', '/api/quick-access', { items }),
 
+  // assistant
+  voiceStatus: () => request<VoiceStatus>('GET', '/api/voice/status'),
+  voiceCommand: (text: string, conversationId: string | null) =>
+    request<VoiceReply>('POST', '/api/voice/command', { text, conversationId }),
   // settings
   geocode: (q: string) => request<Place[]>('GET', `/api/geocode?q=${encodeURIComponent(q)}`),
   saveLocation: (place: { name: string; latitude: number; longitude: number; timezone: string }) =>

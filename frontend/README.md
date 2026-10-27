@@ -88,6 +88,7 @@ quality gate.
 | `/wall` | Wall display | a paired display (or a signed-in user) | Redirects to `/pair` when nobody is signed in. |
 | `/` | Dashboard | user | Weather, quick access, calendar, tasks. |
 | `/home` | Home tab | user | Rooms, devices, scenes, with an Edit mode. |
+| `/assistant` | Assistant | user | Type to the assistant: lights, weather, calendar, tasks. |
 | `/settings` | Settings | user | Location, phones and displays, home agent token, sign out. |
 | `/approve` | Add display | user | Approve a pairing code (opened by the QR code). |
 | anything else | | | Redirects to `/`. |
@@ -96,7 +97,7 @@ Two gates (`RequireAuth`) protect the routes: one for "any signed-in client" (th
 only" (everything else; a display that opens `/` is sent to `/wall`). Both wrap their content in
 `ConnectionProvider` so live updates only run while signed in.
 
-Phone navigation is a bottom tab bar with **Dashboard** and **Home** (`TabBar.tsx`); Settings is the gear
+Phone navigation is a bottom tab bar with **Dashboard**, **Home** and **Assistant** (`TabBar.tsx`); Settings is the gear
 in the page header.
 
 ### How a wall display gets signed in
@@ -157,6 +158,7 @@ Main components:
 | `QuickAccessEditor` | Pins and their order, in Edit mode. |
 | `RoomSection`, `DeviceRow`, `InlineEdit` | Devices by room; in Edit mode: assign room, rename, pin, forget. |
 | `DevicePanel`, `ChannelControls`, `Slider` | The sheet with every control of one device. |
+| `pages/Assistant.tsx`, `assistantModel.ts` | The chat screen and its pure helpers (bubbles, error wording, the 500 character limit). |
 | `ScenesSection`, `SceneEditor`, `CaptureDialog` | Scene buttons, management list, the editor and "save current lights as a scene". |
 | `WallDevices` | The wall's "All devices" view (switching only). |
 | `ConnectionNotice`, `Stale` | "Reconnecting…" banner; "Updated 12 min ago" notes on cards. |
@@ -260,6 +262,15 @@ The pure rules (`draftFromAction`, `draftToAction`, `toggleWhite`, …) are in `
 - Tasks: tick, add with an optional due date, delete (phone). Overdue and due-date chips are computed by
   the server.
 
+### Assistant (`/assistant`)
+
+A chat: type what you want in your own words, in English or Polish, and the backend works out what that means
+([`backend/README.md`](../backend/README.md#14-the-assistant-text-chat)). Replies appear as bubbles; under each
+answer small tags show **what was actually done** ("Light bar · Background: off") and, in red, what failed. Tapping an
+example sends it. The server remembers the conversation for about two minutes (the page keeps its `conversationId`),
+so "and a bit dimmer" works; **New chat** forgets it. When the server has no API key the page says the assistant is not
+set up and disables the box. The lights change through the usual live updates, so the Home tab follows along.
+
 ### Settings (`/settings`)
 
 - **Home location:** search a place (server-side geocoding); saving it sets the weather location and the
@@ -325,9 +336,9 @@ npm test            # vitest run
 npm run typecheck
 ```
 
-26 unit tests of the pure modules: `homeModel.test.ts` (grouping, pinned items, availability, scene result
+30 unit tests of the pure modules: `homeModel.test.ts` (grouping, pinned items, availability, scene result
 text), `sceneModel.test.ts` (drafts to actions, white/colour exclusivity), `calendarRows.test.ts`
-(ordering and which rows are dropped), `format.test.ts` (time and relative-time formatting).
+(ordering and which rows are dropped), `format.test.ts` (time and relative-time formatting), `assistantModel.test.ts` (chat bubbles and error wording).
 
 There are no component or end-to-end tests. The UI was checked by hand in a browser (phone width and
 the wall at 1280×800, light and dark). For an end-to-end check run the full stack with

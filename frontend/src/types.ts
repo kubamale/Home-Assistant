@@ -210,3 +210,18 @@ export interface PairStart {
   expiresIn: number
   pollIntervalSeconds: number
 }
+
+/** The answer to one sentence typed to the assistant. */
+export interface VoiceReply {
+  reply: string
+  /** What was done, for example "Desk lamp: on, 40%". */
+  actions: string[]
+  /** What was attempted and did not work. */
+  failed: string[]
+  conversationId: string
+}
+
+export interface VoiceStatus {
+  available: boolean
+  model: string
+}

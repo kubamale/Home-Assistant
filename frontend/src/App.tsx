@@ -3,6 +3,7 @@ import { PhoneTabs } from './components/TabBar'
 import { ConnectionProvider } from './connection'
 import { useSession } from './hooks/data'
 import { Approve } from './pages/Approve'
+import { Assistant } from './pages/Assistant'
 import { Dashboard } from './pages/Dashboard'
 import { Login } from './pages/Login'
 import { Pair } from './pages/Pair'
@@ -40,6 +41,7 @@ export function App() {
         <Route element={<PhoneTabs />}>
           <Route path="/" element={<Dashboard />} />
           <Route path="/home" element={<SmartHome />} />
+          <Route path="/assistant" element={<Assistant />} />
         </Route>
         <Route path="/settings" element={<Settings />} />
         <Route path="/approve" element={<Approve />} />

@@ -49,11 +49,11 @@ public class SecurityConfig {
                         .requestMatchers("/agent/ws").hasRole("AGENT")
                         .requestMatchers(HttpMethod.PATCH, "/api/tasks/*").hasAnyRole("USER", "DISPLAY")
                         .requestMatchers(HttpMethod.POST, "/api/devices/*/power", "/api/devices/*/channels/*",
-                                "/api/scenes/*/apply")
+                                "/api/scenes/*/apply", "/api/voice/command")
                         .hasAnyRole("USER", "DISPLAY")
                         .requestMatchers(HttpMethod.GET, "/api/auth/me", "/api/weather", "/api/tasks",
                                 "/api/calendar/today", "/api/devices", "/api/rooms", "/api/scenes", "/api/settings",
-                                "/api/stream")
+                                "/api/stream", "/api/voice/status")
                         .hasAnyRole("USER", "DISPLAY")
                         .requestMatchers("/api/**").hasRole("USER")
                         .anyRequest().permitAll()); // the web app's static files must load before login

@@ -98,6 +98,7 @@ laptop against `http://localhost:8080` with a token from **Settings → Home age
 | Variable | Effect |
 |---|---|
 | `LOCAL_PORT` | Host port (default 8080). |
+| `ANTHROPIC_API_KEY` | Enables the Assistant tab locally. Put it in the untracked `.env`. |
 | `LOCAL_CALENDAR_MODE` | `fake` (default, sample events) or `caldav` for a real calendar. |
 | `LOCAL_CALDAV_USERNAME`, `LOCAL_CALDAV_PASSWORD` | iCloud login for `caldav`: the Apple ID e-mail and an **app-specific password**. |
 
@@ -142,6 +143,7 @@ Then open `https://<DOMAIN>`, sign in, and set your location in Settings.
 | `CALDAV_USERNAME` | with `caldav` | Apple ID e-mail. |
 | `CALDAV_PASSWORD` | with `caldav` | An **app-specific password** (account.apple.com → Sign-In and Security → App-Specific Passwords). Never the Apple ID password. |
 | `CALDAV_CALENDARS` | no | Only these calendars, by name, comma-separated. Empty means all. |
+| `ANTHROPIC_API_KEY` | no | Enables the Assistant tab (Claude). Without it the tab says it is not set up. Create one at console.anthropic.com; it is billed per use. |
 
 `.env` is in `.gitignore` and `.dockerignore`. Compose passes these to the app as `APP_*` variables
 (full list in [`backend/README.md`](../backend/README.md#2-configuration)). `APP_DEVICES_MODE` is fixed to
@@ -345,6 +347,7 @@ hundred MB. Caddy needs little.
 - [ ] `APP_PASSWORD_HASH` is set (not the plain `APP_PASSWORD`), and the password is long.
 - [ ] `docker-compose.local.yml` contains no real secrets (calendar login lives in `.env`).
 - [ ] The calendar uses an app-specific password, which can be revoked on its own.
+- [ ] The Anthropic key lives only in `.env`; it is a spending credential, so set a spend limit on it in the Anthropic console.
 - [ ] Backups of the `data` volume exist and are stored off the server.
 - [ ] The agent token exists only in `/etc/homedisplay/agent.json` (or the unit's override) on the Pi.
 - [ ] Only HTTPS is exposed; the app container publishes no ports itself.

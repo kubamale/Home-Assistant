@@ -1507,6 +1507,149 @@ main.phone.tabbed {
   color: var(--accent);
 }
 
+/* ---------- assistant chat ---------- */
+
+main.phone.chat {
+  gap: 0.9rem;
+}
+
+.chat-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.chat-examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.chat-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.chat-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  max-width: 88%;
+}
+
+.chat-row.user {
+  align-self: flex-end;
+  align-items: flex-end;
+}
+
+.chat-row.assistant {
+  align-self: flex-start;
+  align-items: flex-start;
+}
+
+.bubble {
+  padding: 0.6rem 0.9rem;
+  border-radius: 19px;
+  line-height: 1.35;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.bubble.user {
+  background: var(--accent);
+  color: var(--accent-text);
+  border-bottom-right-radius: 6px;
+}
+
+.bubble.assistant {
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  border-bottom-left-radius: 6px;
+}
+
+.bubble.error {
+  color: var(--danger);
+}
+
+/* What the assistant did, as small tags under its answer. */
+.chat-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin: 0;
+  padding: 0 0.2rem;
+  list-style: none;
+}
+
+.chat-chip {
+  font-size: 0.78rem;
+  padding: 0.18rem 0.6rem;
+  border-radius: 999px;
+  background: var(--fill);
+  color: var(--muted);
+}
+
+.chat-chip.failed {
+  color: var(--danger);
+  background: rgba(255, 59, 48, 0.12);
+}
+
+.bubble.typing {
+  display: inline-flex;
+  gap: 0.28rem;
+  padding: 0.8rem 0.95rem;
+}
+
+.bubble.typing span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--muted-2);
+  animation: typing 1.2s infinite ease-in-out;
+}
+
+.bubble.typing span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.bubble.typing span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes typing {
+  0%,
+  60%,
+  100% {
+    opacity: 0.3;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+
+/* Scrolling to the newest message must stop above the message box and the tab bar, which cover the page's bottom. */
+.chat-end {
+  scroll-margin-bottom: calc(9rem + env(safe-area-inset-bottom));
+}
+
+/* The message box stays above the tab bar while the conversation scrolls. */
+.chat-input {
+  position: sticky;
+  bottom: calc(4rem + env(safe-area-inset-bottom));
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.5rem 0 0.2rem;
+  background: var(--bg);
+}
+
+.chat-input input {
+  flex: 1;
+  min-width: 0;
+}
+
 /* ---------- wall (door screen) ---------- */
 
 /* Everything on the wall screen scales with the viewport height, designed for 1280x800. */
@@ -1854,7 +1997,8 @@ html.wall-mode body {
   .tile,
   .scene-button,
   .sheet,
-  .sheet-backdrop {
+  .sheet-backdrop,
+  .bubble.typing span {
     transition: none;
     animation: none;
   }

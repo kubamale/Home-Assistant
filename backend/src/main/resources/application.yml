@@ -45,3 +45,7 @@ app:
   devices:
     # fake: two simulated lights for UI work. agent: devices come from the Pi home agent.
     mode: ${APP_DEVICES_MODE:fake}
+  voice:
+    # The assistant needs an Anthropic API key. Without it the chat answers "not set up" and nothing else changes.
+    api-key: ${ANTHROPIC_API_KEY:}
+    model: claude-haiku-5-5

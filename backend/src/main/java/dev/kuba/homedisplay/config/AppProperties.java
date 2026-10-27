@@ -7,7 +7,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.bind.DefaultValue;
 
 @ConfigurationProperties("app")
-public record AppProperties(Auth auth, Weather weather, Calendar calendar, Devices devices) {
+public record AppProperties(Auth auth, Weather weather, Calendar calendar, Devices devices, Voice voice) {
 
     public record Auth(
             String passwordHash,
@@ -40,5 +40,25 @@ public record AppProperties(Auth auth, Weather weather, Calendar calendar, Devic
     }
 
     public record Devices(@DefaultValue("fake") String mode, @DefaultValue("5s") Duration commandTimeout) {
+    }
+
+    /**
+     * The text assistant. It is available when an Anthropic API key is set; without one the endpoint answers
+     * 503 and the rest of the app is unaffected.
+     */
+    public record Voice(
+            String apiKey,
+            @DefaultValue("claude-haiku-5-5") String model,
+            @DefaultValue("1024") long maxTokens,
+            /** A conversation that has been quiet this long is forgotten, so "and dim it more" only works soon after. */
+            @DefaultValue("2m") Duration conversationIdle,
+            /** Questions in one conversation before a fresh one is started. The history is only ever appended to. */
+            @DefaultValue("12") int maxTurns,
+            /** Model calls allowed within one question (the model may call several tools in sequence). */
+            @DefaultValue("6") int maxToolRounds,
+            @DefaultValue("20") int requestsPerMinute,
+            @DefaultValue("30") int historyDays,
+            /** Only for tests or a proxy; empty means Anthropic's own address. */
+            String baseUrl) {
     }
 }
