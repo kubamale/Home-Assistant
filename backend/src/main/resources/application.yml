@@ -1,0 +1,47 @@
+spring:
+  application:
+    name: homedisplay
+  datasource:
+    # WAL + busy timeout keep the single-user SQLite file friendly to concurrent readers.
+    url: jdbc:sqlite:${APP_DATA_DIR:./data}/homedisplay.db?journal_mode=WAL&busy_timeout=5000&foreign_keys=true
+    hikari:
+      # SQLite allows one writer; one connection avoids "database is locked" surprises.
+      maximum-pool-size: 1
+  flyway:
+    locations: classpath:db/migration
+  mvc:
+    problemdetails:
+      enabled: true
+  lifecycle:
+    timeout-per-shutdown-phase: 10s
+
+server:
+  port: ${PORT:8080}
+  # Behind Caddy the real client address and scheme arrive in X-Forwarded-* headers. Tomcat only
+  # trusts them from private addresses (the Docker network), so login rate limits see the real client.
+  forward-headers-strategy: native
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+
+app:
+  auth:
+    # Set exactly one of these. Prefer password-hash (bcrypt) in production.
+    password-hash: ${APP_PASSWORD_HASH:}
+    password: ${APP_PASSWORD:}
+    session-days: 90
+    secure-cookies: ${APP_SECURE_COOKIES:true}
+  weather:
+    forecast-url: https://api.open-meteo.com/v1/forecast
+    geocoding-url: https://geocoding-api.open-meteo.com/v1/search
+    refresh-interval: 15m
+  calendar:
+    # off: no calendar card data. fake: sample events. caldav: read iCloud through CalDAV.
+    mode: ${APP_CALENDAR_MODE:off}
+  devices:
+    # fake: two simulated lights for UI work. agent: devices come from the Pi home agent.
+    mode: ${APP_DEVICES_MODE:fake}

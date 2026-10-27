@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Home Display</title>
+<style>
+  html, body { height: 100%; margin: 0; background: #0f1419; color: #eef1f5;
+    font-family: system-ui, sans-serif; display: grid; place-items: center; text-align: center; }
+  p { color: #93a0b2; }
+</style>
+</head>
+<body>
+<main>
+  <h1 id="title">Connecting…</h1>
+  <p id="detail">Waiting for the network and the server.</p>
+</main>
+<script>
+  // Started by kiosk.sh as offline.html?to=https://home.example.com/wall
+  // Shown when the Pi boots without internet; moves on to the app as soon as the server answers.
+  const target = new URLSearchParams(location.search).get('to');
+  const origin = target ? new URL(target).origin : null;
+  async function check() {
+    if (!origin) return;
+    try {
+      await fetch(origin + '/api/health', { mode: 'no-cors', cache: 'no-store' });
+      location.replace(target);
+    } catch (e) {
+      document.getElementById('title').textContent = 'Offline';
+      document.getElementById('detail').textContent = 'Trying again every few seconds…';
+      setTimeout(check, 5000);
+    }
+  }
+  check();
+</script>
+</body>
+</html>

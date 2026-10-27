@@ -1,0 +1,42 @@
+# Production setup for the VPS: the app plus Caddy, which terminates HTTPS with automatic certificates.
+# Copy .env.example to .env and fill it in, then: docker compose up -d --build
+
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    environment:
+      APP_PASSWORD_HASH: ${APP_PASSWORD_HASH:?set APP_PASSWORD_HASH in .env}
+      APP_DEVICES_MODE: agent
+      APP_CALENDAR_MODE: ${APP_CALENDAR_MODE:-off}
+      APP_CALENDAR_CALDAV_USERNAME: ${CALDAV_USERNAME:-}
+      APP_CALENDAR_CALDAV_PASSWORD: ${CALDAV_PASSWORD:-}
+      APP_CALENDAR_CALDAV_CALENDARS: ${CALDAV_CALENDARS:-}
+    volumes:
+      - data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/8080' || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  data:
+  caddy_data:
+  caddy_config:

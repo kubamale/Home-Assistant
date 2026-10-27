@@ -1,0 +1,16 @@
+{$DOMAIN} {
+	encode zstd gzip
+
+	# flush_interval -1 sends server-sent events to clients immediately instead of buffering them.
+	reverse_proxy app:8080 {
+		flush_interval -1
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		X-Frame-Options "DENY"
+		Content-Security-Policy "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+	}
+}

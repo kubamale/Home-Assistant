@@ -1,0 +1,5 @@
+{
+  "backendUrl": "https://home.example.com",
+  "token": "paste the agent token from the app: Settings, Home agent",
+  "agentId": "door-pi"
+}

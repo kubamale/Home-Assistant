@@ -1,0 +1,15 @@
+spring:
+  datasource:
+    # Same as production: the schema relies on foreign keys (set null, cascade).
+    url: "jdbc:sqlite::memory:?foreign_keys=true"
+    hikari:
+      maximum-pool-size: 1
+      # An in-memory SQLite database disappears with its connection, so never retire it.
+      max-lifetime: 0
+
+app:
+  auth:
+    password: testpass
+    secure-cookies: false
+  calendar:
+    mode: fake

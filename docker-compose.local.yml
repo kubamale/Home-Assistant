@@ -1,0 +1,37 @@
+# Local setup: no domain and no HTTPS. Lights come from a home agent you run on your laptop
+# (see agent/README.md); set APP_DEVICES_MODE to "fake" below for two simulated lights instead.
+#
+#   docker compose -f docker-compose.local.yml up --build
+#
+# Then open http://localhost:8080 and sign in with the password "dev".
+# - The calendar shows sample events. For your real calendar put these in an untracked .env file
+#   (see .env.example): LOCAL_CALENDAR_MODE=caldav, LOCAL_CALDAV_USERNAME, LOCAL_CALDAV_PASSWORD
+#   (an app-specific password).
+# - Weather is real (Open-Meteo): set your town in Settings.
+# - Open http://localhost:8080/wall for the door-screen layout; approve its pairing from the phone view.
+# Data lives in the "local-data" volume; remove it with `docker compose -f docker-compose.local.yml down -v`.
+# Do not expose this setup to the internet: the password is public and cookies are not Secure.
+
+services:
+  app:
+    build: .
+    ports:
+      - "${LOCAL_PORT:-8080}:8080"
+    environment:
+      APP_PASSWORD: dev
+      APP_SECURE_COOKIES: "false"
+      APP_DEVICES_MODE: agent
+      APP_CALENDAR_MODE: ${LOCAL_CALENDAR_MODE:-fake}
+      APP_CALENDAR_CALDAV_USERNAME: ${LOCAL_CALDAV_USERNAME:-}
+      APP_CALENDAR_CALDAV_PASSWORD: ${LOCAL_CALDAV_PASSWORD:-}
+    volumes:
+      - local-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/8080' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+volumes:
+  local-data:

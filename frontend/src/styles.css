@@ -1,0 +1,1861 @@
+/*
+ * Design system, modelled on Apple's iOS and Home app: system colours, SF type, grouped cards on a
+ * grey canvas, hairline separators, tinted controls, translucent bars, continuous rounded corners.
+ * Light and dark follow the system; the wall screen forces dark.
+ */
+:root {
+  --bg: #f2f2f7;
+  --surface: #ffffff;
+  --surface-2: #f2f2f7;
+  --fill: rgba(120, 120, 128, 0.12);
+  --fill-2: rgba(120, 120, 128, 0.2);
+  --fill-3: rgba(120, 120, 128, 0.32);
+  --text: #000000;
+  --muted: rgba(60, 60, 67, 0.6);
+  --muted-2: rgba(60, 60, 67, 0.3);
+  --border: rgba(60, 60, 67, 0.18);
+  --accent: #007aff;
+  --accent-text: #ffffff;
+  --accent-soft: rgba(0, 122, 255, 0.12);
+  --danger: #ff3b30;
+  --ok: #34c759;
+  --warn: #ff9500;
+  --sun: #ffb800;
+  --cloud: #b9c2d0;
+  --cloud-dark: #8e98a8;
+  --rain: #32a0ff;
+  --tile-on: #ffffff;
+  --tile-on-text: #000000;
+  --tile-off: rgba(120, 120, 128, 0.14);
+  --seg-on: #ffffff;
+  --seg-on-text: #000000;
+  --material: rgba(249, 249, 249, 0.82);
+  --scrim: rgba(0, 0, 0, 0.35);
+  --radius: 20px;
+  --radius-control: 12px;
+  --shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --ease: cubic-bezier(0.32, 0.72, 0, 1);
+  color-scheme: light dark;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', system-ui, 'Helvetica Neue', Arial, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+    --bg: #1c1c1e;
+    --surface: #2c2c2e;
+    --surface-2: #3a3a3c;
+    --fill: rgba(120, 120, 128, 0.24);
+    --fill-2: rgba(120, 120, 128, 0.32);
+    --fill-3: rgba(120, 120, 128, 0.42);
+    --text: #ffffff;
+    --muted: rgba(235, 235, 245, 0.6);
+    --muted-2: rgba(235, 235, 245, 0.3);
+    --border: rgba(84, 84, 88, 0.5);
+    --accent: #0a84ff;
+    --accent-soft: rgba(10, 132, 255, 0.2);
+    --danger: #ff453a;
+    --ok: #30d158;
+    --warn: #ff9f0a;
+    --sun: #ffd60a;
+    --cloud: #7c8696;
+    --cloud-dark: #596273;
+    --tile-on: #f2f2f7;
+    --tile-on-text: #000000;
+    --tile-off: rgba(120, 120, 128, 0.24);
+    --seg-on: #636366;
+    --seg-on-text: #ffffff;
+    --material: rgba(44, 44, 46, 0.8);
+    --scrim: rgba(0, 0, 0, 0.5);
+    --shadow: none;
+  }
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #1c1c1e;
+  --surface: #2c2c2e;
+  --surface-2: #3a3a3c;
+  --fill: rgba(120, 120, 128, 0.24);
+  --fill-2: rgba(120, 120, 128, 0.32);
+  --fill-3: rgba(120, 120, 128, 0.42);
+  --text: #ffffff;
+  --muted: rgba(235, 235, 245, 0.6);
+  --muted-2: rgba(235, 235, 245, 0.3);
+  --border: rgba(84, 84, 88, 0.5);
+  --accent: #0a84ff;
+  --accent-soft: rgba(10, 132, 255, 0.2);
+  --danger: #ff453a;
+  --ok: #30d158;
+  --warn: #ff9f0a;
+  --sun: #ffd60a;
+  --cloud: #7c8696;
+  --cloud-dark: #596273;
+  --tile-on: #f2f2f7;
+  --tile-on-text: #000000;
+  --tile-off: rgba(120, 120, 128, 0.24);
+  --seg-on: #636366;
+  --seg-on-text: #ffffff;
+  --material: rgba(44, 44, 46, 0.8);
+  --scrim: rgba(0, 0, 0, 0.5);
+  --shadow: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-size: 1.0625rem;
+  line-height: 1.35;
+  letter-spacing: -0.012em;
+  -webkit-font-smoothing: antialiased;
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+}
+
+h1 {
+  font-size: 1.3rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+/* Card headings are small, quiet and capitalised, like the headers of an iOS grouped list. */
+h2 {
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.045em;
+  color: var(--muted);
+  margin-bottom: 0.7rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+ul,
+ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+p {
+  margin: 0.25rem 0;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.small {
+  font-size: 0.85rem;
+}
+
+.error {
+  color: var(--danger);
+}
+
+.ok {
+  color: var(--ok);
+}
+
+.center {
+  text-align: center;
+  padding: 3rem 1rem;
+  color: var(--muted);
+}
+
+/* ---------- cards and common controls ---------- */
+
+.card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 1rem 1.1rem;
+  box-shadow: var(--shadow);
+}
+
+/* Quick access and the scene buttons sit directly on the canvas with a bold title, like the Home app. */
+.card.quick,
+.card.scenes:not(.manage) {
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+}
+
+.card.quick > h2,
+.card.scenes:not(.manage) > h2 {
+  font-size: 1.35rem;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  margin: 0 0.15rem 0.7rem;
+}
+
+.button,
+button.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  min-height: 46px;
+  padding: 0 1.2rem;
+  border-radius: var(--radius-control);
+  border: 0;
+  background: var(--fill);
+  color: var(--accent);
+  font: inherit;
+  font-weight: 600;
+  letter-spacing: -0.012em;
+  text-decoration: none;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.2s var(--ease), background 0.2s;
+}
+
+.button:active,
+.tile:active,
+.scene-button:active,
+.icon-link:active {
+  transform: scale(0.97);
+  opacity: 0.8;
+}
+
+.button.primary {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.button.danger {
+  color: var(--danger);
+}
+
+.button:disabled {
+  opacity: 0.4;
+  cursor: default;
+  transform: none;
+}
+
+.button.compact {
+  min-height: 34px;
+  padding: 0 0.85rem;
+  border-radius: 10px;
+  font-size: 0.92rem;
+}
+
+.button.pinned {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+input[type='text'],
+input[type='password'],
+input[type='date'],
+input:not([type]) {
+  min-height: 46px;
+  width: 100%;
+  padding: 0 0.9rem;
+  border-radius: var(--radius-control);
+  border: 0;
+  background: var(--fill);
+  color: var(--text);
+  font: inherit;
+  letter-spacing: inherit;
+}
+
+input::placeholder {
+  color: var(--muted-2);
+}
+
+input:focus-visible,
+button:focus-visible,
+a:focus-visible,
+select:focus-visible,
+summary:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  outline-offset: 2px;
+}
+
+select {
+  min-height: 36px;
+  padding: 0 0.7rem;
+  border-radius: 10px;
+  border: 0;
+  background: var(--fill);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.92rem;
+  max-width: 100%;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.form label,
+label.form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-weight: 600;
+  font-size: 0.88rem;
+  color: var(--muted);
+}
+
+.icon-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--fill);
+  color: var(--accent);
+  text-decoration: none;
+  transition: transform 0.2s var(--ease), opacity 0.15s;
+}
+
+.icon-link svg {
+  width: 22px;
+  height: 22px;
+}
+
+.text-link {
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: none;
+  padding: 0.5rem 0.2rem;
+}
+
+.icon-button {
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  font-size: 1.4rem;
+  cursor: pointer;
+}
+
+.chip {
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  background: var(--fill);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.chip.overdue {
+  background: color-mix(in srgb, var(--danger) 15%, transparent);
+  color: var(--danger);
+}
+
+.badge {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.18rem 0.55rem;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.stale {
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--warn);
+}
+
+.connection-notice {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  padding: 0.55rem 1rem;
+  text-align: center;
+  font-weight: 600;
+  font-size: 0.92rem;
+  background: var(--warn);
+  color: #1a1204;
+}
+
+/* ---------- phone layout ---------- */
+
+main.phone {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: max(0.8rem, env(safe-area-inset-top)) 16px max(2rem, env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+/* The page title is an iOS "large title". */
+.phone-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.4rem 0.15rem 0;
+}
+
+.phone-header h1 {
+  font-size: 2.1rem;
+  line-height: 1.1;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+main.narrow {
+  max-width: 420px;
+  margin: 0 auto;
+  padding: 4rem 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+main.narrow h1 {
+  font-size: 2.1rem;
+  letter-spacing: -0.03em;
+}
+
+/* ---------- weather ---------- */
+
+/* Day and night give the card a sky, as in the Weather app. */
+.card.weather.day,
+.card.weather.night {
+  color: #fff;
+}
+
+.card.weather.day {
+  background: linear-gradient(180deg, #4f9bf4 0%, #2f78e0 100%);
+}
+
+.card.weather.night {
+  background: linear-gradient(180deg, #243a66 0%, #0e1830 100%);
+}
+
+.card.weather.day .muted,
+.card.weather.night .muted,
+.card.weather.day .weather-meta,
+.card.weather.night .weather-meta,
+.card.weather.day .condition,
+.card.weather.night .condition,
+.card.weather.day .hours .hour,
+.card.weather.night .hours .hour {
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.weather-main {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.weather .temp {
+  font-size: 3.6rem;
+  font-weight: 200;
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+.weather .condition {
+  color: var(--muted);
+  margin-top: 0.2rem;
+  font-weight: 500;
+}
+
+.weather-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  margin-top: 0.8rem;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.hours {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.25rem;
+  margin-top: 1rem;
+  padding-top: 0.9rem;
+  border-top: 0.5px solid rgba(255, 255, 255, 0.3);
+}
+
+.hours li {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  flex: 1;
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+
+.hours .hour {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+
+.rain-chance {
+  font-size: 0.7rem;
+  color: #9fd2ff;
+}
+
+.weather-icon {
+  flex: none;
+}
+
+.wi-sun circle {
+  fill: var(--sun);
+}
+
+.wi-sun g {
+  stroke: var(--sun);
+}
+
+.wi-moon {
+  fill: #dfe6f2;
+}
+
+.wi-cloud {
+  fill: var(--cloud);
+}
+
+.wi-cloud-dark {
+  fill: var(--cloud-dark);
+}
+
+.wi-rain {
+  stroke: var(--rain);
+}
+
+.wi-snow circle {
+  fill: #eef4fc;
+  stroke: var(--cloud-dark);
+  stroke-width: 0.5;
+}
+
+.wi-fog {
+  stroke: var(--cloud);
+}
+
+.wi-bolt {
+  fill: var(--sun);
+}
+
+/* ---------- calendar ---------- */
+
+.events {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.event {
+  display: grid;
+  grid-template-columns: 6.6rem 1fr auto;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.6rem 0.7rem;
+  margin: 0 -0.7rem;
+  border-radius: 14px;
+}
+
+.event.next,
+.event.all-day {
+  background: var(--accent-soft);
+}
+
+/* Finished events stay visible, faded and crossed out. */
+.event.done {
+  opacity: 0.5;
+}
+
+.event.done .event-title {
+  text-decoration: line-through;
+}
+
+.event-time {
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.event.next .event-time,
+.event.all-day .event-time {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.event-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.event-title {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.event-place {
+  color: var(--muted);
+  font-size: 0.85rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- tasks ---------- */
+
+.task-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.task {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 50px;
+}
+
+.task + .task {
+  border-top: 0.5px solid var(--border);
+}
+
+.task-check {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  flex: 1;
+  min-height: 50px;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.task-check input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+}
+
+/* Round check circles, as in Reminders. */
+.task-check .box {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1.5px solid var(--muted-2);
+  display: grid;
+  place-items: center;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.task-check input:checked + .box {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.task-check input:checked + .box::after {
+  content: '';
+  width: 6px;
+  height: 11px;
+  border: solid var(--accent-text);
+  border-width: 0 2.5px 2.5px 0;
+  transform: rotate(45deg) translate(-1px, -1px);
+}
+
+.task-check input:focus-visible + .box {
+  outline: 3px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  outline-offset: 2px;
+}
+
+.task-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.task.done .task-title {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.add-task {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.5rem;
+  margin-top: 0.9rem;
+}
+
+.add-task input[type='date'] {
+  grid-column: 1;
+}
+
+.add-task .button {
+  grid-row: 1 / span 2;
+  grid-column: 2;
+  height: 100%;
+}
+
+.add-task .error {
+  grid-column: 1 / -1;
+}
+
+/* ---------- lists of devices ---------- */
+
+.device-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.device-list > li + li {
+  border-top: 0.5px solid var(--border);
+}
+
+.device {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 56px;
+  gap: 1rem;
+}
+
+.device.unavailable .device-name {
+  color: var(--muted);
+}
+
+.device-name small {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.device-open {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex: 1;
+  min-width: 0;
+  min-height: 56px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.device-open .chevron {
+  color: var(--muted-2);
+  font-size: 1.5rem;
+  font-weight: 300;
+}
+
+/* The iOS switch: a green pill with a white knob. */
+.switch {
+  position: relative;
+  flex: none;
+  width: 51px;
+  height: 31px;
+  border-radius: 999px;
+  border: 0;
+  padding: 0;
+  background: var(--fill-3);
+  cursor: pointer;
+  transition: background 0.25s var(--ease);
+}
+
+.switch .knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 27px;
+  height: 27px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.15), 0 1px 1px rgba(0, 0, 0, 0.16), 0 3px 1px rgba(0, 0, 0, 0.1);
+  transition: transform 0.25s var(--ease);
+}
+
+.switch.on {
+  background: var(--ok);
+}
+
+.switch.on .knob {
+  transform: translateX(20px);
+}
+
+.switch:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* ---------- quick access ---------- */
+
+.quick-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+
+/* Tiles, as in the Home app: grey when off, white when on, with the icon at the top. */
+.tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: 0.05rem;
+  min-width: 0;
+  min-height: 7.4rem;
+  padding: 0.85rem 0.95rem;
+  border-radius: 22px;
+  border: 0;
+  background: var(--tile-off);
+  color: var(--text);
+  font: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.25s var(--ease), color 0.25s, transform 0.2s var(--ease), opacity 0.15s;
+}
+
+.tile.on {
+  background: var(--tile-on);
+  color: var(--tile-on-text);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+.tile:disabled {
+  cursor: default;
+}
+
+.tile.unavailable {
+  opacity: 0.45;
+}
+
+.tile-icon {
+  position: absolute;
+  top: 0.8rem;
+  left: 0.9rem;
+  width: 1.7rem;
+  height: 1.7rem;
+  color: var(--muted);
+  transition: color 0.25s;
+}
+
+.tile.on .tile-icon {
+  color: #ff9f0a;
+}
+
+.tile.scene {
+  background: color-mix(in srgb, var(--accent) 13%, var(--surface));
+}
+
+.tile.scene .tile-icon {
+  color: var(--accent);
+}
+
+.tile-room {
+  max-width: 100%;
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--muted);
+  white-space: pre;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tile.on .tile-room {
+  color: rgba(0, 0, 0, 0.55);
+}
+
+.tile-name {
+  max-width: 100%;
+  font-weight: 600;
+  font-size: 1rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tile-state {
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.tile.on .tile-state {
+  color: rgba(0, 0, 0, 0.6);
+}
+
+/* ---------- settings ---------- */
+
+.place-list,
+.credential-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0.5rem 0;
+}
+
+.place {
+  width: 100%;
+  min-height: 54px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 0.1rem;
+  padding: 0.4rem 0.1rem;
+  border: 0;
+  border-bottom: 0.5px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.place span {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.credential-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.6rem 0;
+  border-bottom: 0.5px solid var(--border);
+}
+
+.credential-list li > div {
+  display: flex;
+  flex-direction: column;
+}
+
+.token-box {
+  margin: 0.6rem 0;
+  padding: 0.8rem;
+  border-radius: 14px;
+  background: var(--fill);
+}
+
+.token-box code {
+  display: block;
+  margin-top: 0.4rem;
+  word-break: break-all;
+  user-select: all;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 0.88rem;
+}
+
+/* ---------- pairing screen ---------- */
+
+main.pair {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2rem;
+  padding: 2rem;
+  background: #1c1c1e; /* always dark: it is shown on the kiosk before it is paired */
+  color: #fff;
+  text-align: center;
+}
+
+.pair h1 {
+  font-size: 2.2rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.pair-body {
+  display: flex;
+  align-items: center;
+  gap: 4rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.pair-qr {
+  background: #fff;
+  color: #000;
+  padding: 1.1rem;
+  border-radius: 28px;
+}
+
+.pair-qr p {
+  margin: 0.5rem 0 0;
+  font-weight: 600;
+}
+
+.pair .code {
+  font-size: 3.4rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  font-variant-numeric: tabular-nums;
+  margin-top: 1rem;
+}
+
+.pair p {
+  color: rgba(235, 235, 245, 0.6);
+}
+
+/* ---------- editing on the Home tab ---------- */
+
+.button.pinned {
+  background: var(--accent-soft);
+}
+
+.icon-button.small {
+  width: 34px;
+  height: 34px;
+  font-size: 1.1rem;
+  color: var(--accent);
+}
+
+.icon-button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.room h2 {
+  min-height: 34px;
+}
+
+.room-tools {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.device-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 0.8rem 0;
+}
+
+.device-edit .device-name small {
+  color: var(--muted);
+}
+
+.edit-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.inline-edit {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.inline-edit input {
+  min-height: 38px;
+  flex: 1;
+  min-width: 0;
+}
+
+.confirm {
+  padding: 0.7rem 0.9rem;
+  margin: 0.4rem 0;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+}
+
+/* ---------- device panel and other sheets ---------- */
+
+@keyframes sheet-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes sheet-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(10px);
+  }
+}
+
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem 16px;
+  background: var(--scrim);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  animation: sheet-fade 0.2s ease-out;
+}
+
+.sheet {
+  width: 100%;
+  max-width: 640px;
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border-radius: 26px;
+  padding: 1.15rem 1.25rem;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.35);
+  animation: sheet-pop 0.32s var(--ease);
+}
+
+.sheet-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.sheet-head h2 {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+
+.sheet-head .button {
+  min-height: 36px;
+  padding: 0 1rem;
+  border-radius: 999px;
+}
+
+.sheet-body {
+  scrollbar-width: thin;
+  padding-right: 0.35rem;
+  overflow-x: hidden;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+  padding-bottom: 0.5rem;
+}
+
+.sheet-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.8rem;
+  padding-top: 0.9rem;
+}
+
+.sheet-foot .button.primary {
+  min-width: 10rem;
+}
+
+.sheet-foot p {
+  margin: 0;
+  flex: 1;
+}
+
+.channel {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1rem 0;
+  border-top: 0.5px solid var(--border);
+}
+
+.channel:first-child {
+  border-top: 0;
+}
+
+.channel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 40px;
+}
+
+.channel-head h3 {
+  font-size: 1.1rem;
+  font-weight: 650;
+}
+
+.slider {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.slider-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.slider.active .slider-label {
+  color: var(--accent);
+}
+
+.slider-value {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Thick sliders with a white handle and a filled part, like the Home app. Sliders with their own
+   gradient (white, colour) keep it; --pf is how far along the value is (0 to 1). */
+input[type='range'] {
+  --stop: calc(15px + (100% - 30px) * var(--pf, 0.5));
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 30px;
+  margin: 0;
+  border-radius: 15px;
+  background: linear-gradient(to right, var(--accent) var(--stop), var(--fill-2) var(--stop));
+  touch-action: pan-y;
+  cursor: pointer;
+}
+
+input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: #fff;
+  border: 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3), 0 0 0 0.5px rgba(0, 0, 0, 0.08);
+}
+
+input[type='range']::-moz-range-thumb {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: #fff;
+  border: 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+input[type='range']:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+.swatch {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 0;
+  box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+  transition: transform 0.2s var(--ease);
+}
+
+.swatch:active {
+  transform: scale(0.9);
+}
+
+.swatch:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* ---------- scenes ---------- */
+
+.scene-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+  gap: 0.7rem;
+}
+
+.scene-button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  min-width: 0;
+  min-height: 4.2rem;
+  padding: 0.75rem 0.95rem;
+  border-radius: 20px;
+  border: 0;
+  background: color-mix(in srgb, var(--accent) 13%, var(--surface));
+  color: var(--text);
+  font: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.2s var(--ease), opacity 0.15s;
+}
+
+.scene-button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.scene-name {
+  max-width: 100%;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scene-state {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.scene-create {
+  margin-top: 0.9rem;
+}
+
+.action-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  padding: 1rem;
+  border-radius: 18px;
+  background: var(--fill);
+}
+
+.action-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.action-head h3 {
+  font-size: 1.02rem;
+  font-weight: 650;
+}
+
+.setting-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.setting-row.off .setting-body {
+  opacity: 0.45;
+}
+
+.setting-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.check input[type='checkbox'] {
+  width: 24px;
+  height: 24px;
+  flex: none;
+  accent-color: var(--accent);
+}
+
+/* A segmented control, as in iOS: a grey track with a white selected segment. */
+.segmented {
+  display: inline-flex;
+  align-self: flex-start;
+  padding: 2px;
+  border-radius: 10px;
+  background: var(--fill-2);
+}
+
+.segmented button {
+  min-height: 34px;
+  padding: 0 1.3rem;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s var(--ease);
+}
+
+.segmented button[aria-pressed='true'] {
+  background: var(--seg-on);
+  color: var(--seg-on-text);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+}
+
+.segmented button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.add-light select {
+  width: 100%;
+  min-height: 46px;
+  border-radius: var(--radius-control);
+}
+
+/* ---------- tab bar ---------- */
+
+main.phone.tabbed {
+  padding-bottom: calc(5.8rem + env(safe-area-inset-bottom));
+}
+
+.tabbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  display: flex;
+  justify-content: center;
+  background: var(--material);
+  -webkit-backdrop-filter: saturate(180%) blur(22px);
+  backdrop-filter: saturate(180%) blur(22px);
+  border-top: 0.5px solid var(--border);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.tabbar-inner {
+  display: flex;
+  width: 100%;
+  max-width: 640px;
+}
+
+.tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.1rem;
+  min-height: 58px;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.tab svg {
+  width: 26px;
+  height: 26px;
+}
+
+.tab.active {
+  color: var(--accent);
+}
+
+/* ---------- wall (door screen) ---------- */
+
+/* Everything on the wall screen scales with the viewport height, designed for 1280x800. */
+html.wall-mode {
+  font-size: clamp(12px, 2.45vh, 30px);
+}
+
+html.wall-mode,
+html.wall-mode body {
+  overflow: hidden;
+  height: 100%;
+}
+
+.wall {
+  height: 100vh;
+  padding: 1.1rem 1.4rem;
+  display: flex;
+  flex-direction: column;
+  user-select: none;
+  cursor: none;
+}
+
+/* A kiosk on a Raspberry Pi: no blur effects here, they cost too much to draw. */
+.wall .sheet-backdrop {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.wall .connection-notice {
+  /* part of the column, so the grid shrinks instead of being covered */
+  position: static;
+  margin: -1.1rem -1.4rem 1rem;
+  font-size: 1.1rem;
+}
+
+.wall-grid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1.05fr 1fr 0.95fr;
+  gap: 1.1rem;
+}
+
+.wall-left,
+.wall-middle,
+.wall-right {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+}
+
+.wall .card {
+  padding: 1.15rem 1.35rem;
+  font-size: 1.15rem;
+  border-radius: 26px;
+}
+
+.wall .card.quick,
+.wall .card.scenes:not(.manage) {
+  padding: 0;
+}
+
+.wall h2 {
+  font-size: 0.85rem;
+}
+
+.wall .card.quick > h2,
+.wall .card.scenes:not(.manage) > h2 {
+  font-size: 1.5rem;
+}
+
+.wall-clock {
+  padding: 0.2rem 0.4rem 0;
+}
+
+.wall-clock .clock {
+  font-size: 7rem;
+  font-weight: 200;
+  line-height: 1;
+  letter-spacing: -0.045em;
+  font-variant-numeric: tabular-nums;
+}
+
+.wall-clock .date {
+  font-size: 1.5rem;
+  font-weight: 500;
+  color: var(--muted);
+  margin-top: 0.4rem;
+}
+
+.wall .weather .temp {
+  font-size: 4.6rem;
+}
+
+.wall .weather .condition {
+  font-size: 1.4rem;
+}
+
+.wall .weather-main svg {
+  width: 6rem;
+  height: 6rem;
+}
+
+.wall .weather-meta {
+  font-size: 1rem;
+}
+
+.wall .hours li {
+  font-size: 1rem;
+}
+
+.wall .hours svg {
+  width: 2rem;
+  height: 2rem;
+}
+
+.wall-middle .calendar {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.wall .event {
+  grid-template-columns: 7.2rem 1fr auto;
+  padding: 0.8rem 0.8rem;
+  margin: 0 -0.8rem;
+  border-radius: 18px;
+}
+
+.wall .event-time {
+  font-size: 1.05rem;
+}
+
+.wall .event-title {
+  font-size: 1.35rem;
+  white-space: normal;
+}
+
+.wall .event-place {
+  font-size: 1rem;
+}
+
+.wall .badge {
+  font-size: 0.85rem;
+}
+
+.wall .task {
+  min-height: 4rem;
+}
+
+.wall .task-check {
+  min-height: 4rem;
+  gap: 1rem;
+}
+
+.wall .task-check .box {
+  width: 2.3rem;
+  height: 2.3rem;
+}
+
+.wall .task-check input:checked + .box::after {
+  width: 0.55rem;
+  height: 1.05rem;
+}
+
+.wall .task-title {
+  font-size: 1.4rem;
+}
+
+.wall-right .tasks {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.wall .tile {
+  min-height: 8rem;
+  padding: 0.9rem 1.05rem;
+  border-radius: 26px;
+}
+
+.wall .tile-icon {
+  top: 0.9rem;
+  left: 1rem;
+  width: 1.9rem;
+  height: 1.9rem;
+}
+
+.wall .tile-room {
+  display: none; /* a glance display: the name and state are enough */
+}
+
+.wall .tile-name {
+  font-size: 1.2rem;
+  line-height: 1.2;
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.wall .tile-state {
+  font-size: 1rem;
+}
+
+.wall h2 .all-devices {
+  min-height: 2.6rem;
+  padding: 0 1.1rem;
+  font-size: 0.95rem;
+  border-radius: 999px;
+}
+
+.wall-devices {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.wall-devices-head {
+  display: flex;
+  align-items: center;
+  gap: 1.2rem;
+}
+
+.wall-devices-head h1 {
+  font-size: 2rem;
+  letter-spacing: -0.03em;
+}
+
+.wall-devices-head .button {
+  min-height: 3.2rem;
+  padding: 0 1.4rem;
+  font-size: 1.1rem;
+  border-radius: 999px;
+}
+
+.wall-devices-grid {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(22rem, 1fr));
+  gap: 1.1rem;
+  align-content: start;
+}
+
+.wall-devices-grid .scenes {
+  grid-column: 1 / -1;
+}
+
+.wall .scene-grid {
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+}
+
+.wall .scene-button {
+  min-height: 4.8rem;
+  padding: 0.85rem 1.05rem;
+  border-radius: 24px;
+}
+
+.wall .scene-name {
+  font-size: 1.2rem;
+}
+
+.wall .scene-state {
+  font-size: 0.95rem;
+}
+
+.wall .device {
+  min-height: 4.4rem;
+}
+
+.wall .device-open {
+  min-height: 4.4rem;
+}
+
+.wall .device-name {
+  font-size: 1.35rem;
+}
+
+.wall .switch {
+  width: 5.1rem;
+  height: 3.1rem;
+}
+
+.wall .switch .knob {
+  top: 0.2rem;
+  left: 0.2rem;
+  width: 2.7rem;
+  height: 2.7rem;
+}
+
+.wall .switch.on .knob {
+  transform: translateX(2rem);
+}
+
+.wall .sheet {
+  max-width: 44rem;
+  padding: 1.3rem 1.6rem;
+  font-size: 1.15rem;
+  border-radius: 30px;
+}
+
+.wall .sheet-head h2 {
+  font-size: 1.6rem;
+}
+
+.wall .sheet-head .button {
+  min-height: 3.2rem;
+  padding: 0 1.4rem;
+  font-size: 1.1rem;
+}
+
+.wall .channel-head h3 {
+  font-size: 1.3rem;
+}
+
+.wall .slider-label {
+  font-size: 1.05rem;
+}
+
+.wall input[type='range'] {
+  --stop: calc(1.3rem + (100% - 2.6rem) * var(--pf, 0.5));
+  height: 2.6rem;
+  border-radius: 1.3rem;
+}
+
+.wall input[type='range']::-webkit-slider-thumb {
+  width: 2.6rem;
+  height: 2.6rem;
+}
+
+.wall .swatch {
+  width: 3.1rem;
+  height: 3.1rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .switch,
+  .switch .knob,
+  .button,
+  .tile,
+  .scene-button,
+  .sheet,
+  .sheet-backdrop {
+    transition: none;
+    animation: none;
+  }
+}

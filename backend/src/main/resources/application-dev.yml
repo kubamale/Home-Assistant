@@ -1,0 +1,10 @@
+app:
+  auth:
+    password: dev
+    secure-cookies: false
+  calendar:
+    mode: fake
+
+logging:
+  level:
+    dev.kuba.homedisplay: DEBUG
