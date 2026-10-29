@@ -1,7 +1,7 @@
 # Home Display
 
 Weather, tasks, calendar and lights for the home, shown on a phone and on a door-mounted touchscreen.
-Requirements are in `PRD.md`, the design in `ARCHITECTURE.md`; `VOICE-CONTROL.md` is the plan for a voice agent that listens and speaks (the typed chat, the first stage, is built; speech is not); `smart-door-display-mvp.md` is the original plan.
+Requirements are in `PRD.md`, the design in `ARCHITECTURE.md`; `VOICE-CONTROL.md` is the plan for a voice agent that listens and speaks (the typed chat, talking in the browser and the wall's "Hey Jarvis" wake word are built; the Pi's microphone is not); `smart-door-display-mvp.md` is the original plan.
 
 ```
 backend/   Spring Boot 4 (Java 25): REST + SSE API, auth, SQLite, serves the built web app

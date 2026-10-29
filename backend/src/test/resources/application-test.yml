@@ -17,3 +17,6 @@ app:
     initial-delay: PT1H
   weather:
     initial-delay: PT1H
+  speech:
+    # Tests count what the speech service is asked to say.
+    warm-phrases: false

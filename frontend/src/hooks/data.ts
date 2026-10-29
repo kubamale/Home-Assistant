@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, ApiError } from '../api'
-import type { ChannelChange, PinItem, SceneActionPayload, SessionInfo } from '../types'
+import type { ChannelChange, PinItem, SceneActionPayload, SessionInfo, VoiceSettings } from '../types'
 
 // Data is refreshed by server events (see ConnectionProvider). Queries keep their last good data
 // when a refetch fails, which is what the "reconnecting" screens rely on.
@@ -30,6 +30,8 @@ export const useDevices = () => useQuery({ queryKey: ['devices'], queryFn: api.d
 export const useRooms = () => useQuery({ queryKey: ['rooms'], queryFn: api.rooms, ...common })
 export const useScenes = () => useQuery({ queryKey: ['scenes'], queryFn: api.scenes, ...common })
 export const useVoiceStatus = () => useQuery({ queryKey: ['voice', 'status'], queryFn: api.voiceStatus, ...common })
+export const useVoiceSettings = () => useQuery({ queryKey: ['voice', 'settings'], queryFn: api.voiceSettings, ...common })
+export const useVoiceVoices = () => useQuery({ queryKey: ['voice', 'voices'], queryFn: api.voiceVoices, staleTime: Infinity })
 export const useSettings = () => useQuery({ queryKey: ['settings'], queryFn: api.settings, ...common })
 export const useTasks = (scope: 'today' | 'all' = 'today') =>
   useQuery({ queryKey: ['tasks', scope], queryFn: () => api.tasks(scope), ...common })
@@ -113,6 +115,14 @@ export function useApplyScene() {
   return useMutation({
     mutationFn: (id: number) => api.applyScene(id),
     onSettled: () => client.invalidateQueries({ queryKey: ['devices'] }),
+  })
+}
+
+export function useSaveVoiceSettings() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (settings: VoiceSettings) => api.saveVoiceSettings(settings),
+    onSuccess: () => client.invalidateQueries({ queryKey: ['voice'] }),
   })
 }
 

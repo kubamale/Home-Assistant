@@ -12,6 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -107,6 +108,27 @@ class VoiceTest extends IntegrationTest {
 
     private String devices(Cookie who) throws Exception {
         return mvc.perform(get("/api/devices").cookie(who)).andReturn().getResponse().getContentAsString();
+    }
+
+    /** Makes a room, puts the fake light bar in it, and puts the display in it. Returns the room's id. */
+    private long placeInRoom(Cookie user, String displayId, String roomName) throws Exception {
+        String created = mvc.perform(post("/api/rooms").cookie(user).contentType(JSON).content("{\"name\":\"" + roomName + "\"}"))
+                .andReturn().getResponse().getContentAsString();
+        long room = json.readTree(created).path("id").asLong();
+        mvc.perform(patch("/api/devices/fake-light-bar").cookie(user).contentType(JSON).content("{\"roomId\":" + room + "}"))
+                .andExpect(status().isNoContent());
+        mvc.perform(put("/api/credentials/" + displayId + "/room").cookie(user).contentType(JSON).content("{\"roomId\":" + room + "}"))
+                .andExpect(status().isNoContent());
+        return room;
+    }
+
+    private String displayId(Cookie user) throws Exception {
+        for (var credential : json.readTree(mvc.perform(get("/api/credentials").cookie(user)).andReturn().getResponse().getContentAsString())) {
+            if ("display".equals(credential.path("kind").asString())) {
+                return credential.path("id").asString();
+            }
+        }
+        throw new AssertionError("no display was paired");
     }
 
     // ---- turning a sentence into actions ----
@@ -340,6 +362,84 @@ class VoiceTest extends IntegrationTest {
         assertEquals(6, model.results.size());
     }
 
+    // ---- plain commands skip the model ----
+
+    @Test
+    void aPlainCommandIsDoneWithoutAskingTheModel() throws Exception {
+        Cookie user = loginAsUser();
+        ask(user, "Turn on the background light.").andExpect(status().isOk())
+                .andExpect(jsonPath("$.reply", is("Done.")))
+                .andExpect(jsonPath("$.actions", hasItem(BAR_BACKGROUND + ": on")))
+                .andExpect(jsonPath("$.failed", hasSize(0)))
+                .andExpect(jsonPath("$.conversationId", notNullValue()));
+
+        assertTrue(model.userTexts.isEmpty(), "the model was asked: " + model.userTexts);
+        mvc.perform(get("/api/devices").cookie(user))
+                .andExpect(jsonPath("$.devices[?(@.id=='fake-light-bar')].channels[?(@.id=='background')].on", hasItem(true)));
+    }
+
+    @Test
+    void aPolishPlainCommandIsAnsweredInPolish() throws Exception {
+        Cookie user = loginAsUser();
+        ask(user, "Włącz tylne światło").andExpect(status().isOk()).andExpect(jsonPath("$.reply", is("Gotowe.")));
+        ask(user, "Wyłącz wszystkie światła").andExpect(status().isOk()).andExpect(jsonPath("$.reply", is("Gotowe.")))
+                .andExpect(jsonPath("$.actions", hasItem(BAR_BACKGROUND + ": off")));
+        assertTrue(model.userTexts.isEmpty());
+        mvc.perform(get("/api/devices").cookie(user))
+                .andExpect(jsonPath("$.devices[?(@.id=='fake-light-bar')].channels[?(@.id=='background')].on", hasItem(false)))
+                .andExpect(jsonPath("$.devices[?(@.id=='fake-lamp')].power", hasItem(false)));
+    }
+
+    @Test
+    void aSceneByNameIsAppliedWithoutTheModel() throws Exception {
+        Cookie user = loginAsUser();
+        ask(user, "Turn on the All off scene").andExpect(status().isOk()).andExpect(jsonPath("$.actions", hasItem("Scene All off")));
+        assertTrue(model.userTexts.isEmpty());
+    }
+
+    @Test
+    void whatTheModelDidNotSeeIsToldToItWithTheNextSentence() throws Exception {
+        Cookie user = loginAsUser();
+        String id = ask(user, "Turn on the background light").andReturn().getResponse().getContentAsString();
+        id = json.readTree(id).path("conversationId").asString();
+
+        model.onUser = text -> Step.text("Green it is.");
+        ask(user, "make it green", id).andExpect(status().isOk()).andExpect(jsonPath("$.conversationId", is(id)));
+
+        String sent = model.userTexts.get(0);
+        assertTrue(sent.contains("Done for the person without you"), sent);
+        assertTrue(sent.contains("Turn on the background light"), sent);
+        assertTrue(sent.contains(BAR_BACKGROUND + ": on"), sent);
+        assertTrue(sent.contains("make it green"), sent);
+
+        // told once, not again
+        ask(user, "and dimmer", id).andExpect(status().isOk());
+        assertFalse(model.userTexts.get(1).contains("Done for the person without you"), model.userTexts.get(1));
+    }
+
+    @Test
+    void aSentenceWithMoreThanOnOrOffStillGoesToTheModel() throws Exception {
+        Cookie user = loginAsUser();
+        script(() -> call("set_lights", "{\"changes\":[{\"light\":\"" + refOf(BAR_BACKGROUND) + "\",\"on\":true,\"hue\":120,\"saturation\":100}]}"),
+                "The background light is green.");
+        ask(user, "Turn on the background light and make it green").andExpect(status().isOk())
+                .andExpect(jsonPath("$.reply", is("The background light is green.")));
+        assertEquals(1, model.userTexts.size());
+    }
+
+    @Test
+    void aPlainCommandIsLoggedLikeAnyOther() throws Exception {
+        Cookie user = loginAsUser();
+        ask(user, "Turn on the background light").andExpect(status().isOk());
+        mvc.perform(get("/api/voice/history").cookie(user)).andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].transcript", is("Turn on the background light")))
+                .andExpect(jsonPath("$[0].reply", is("Done.")))
+                .andExpect(jsonPath("$[0].toolsUsed", is("[\"set_lights\"]")))
+                .andExpect(jsonPath("$[0].outcome", is("ok")))
+                .andExpect(jsonPath("$[0].modelMs", is(0)));
+    }
+
     @Test
     void aRefusalIsAnsweredPolitely() throws Exception {
         Cookie user = loginAsUser();
@@ -402,5 +502,74 @@ class VoiceTest extends IntegrationTest {
                 .andExpect(jsonPath("$[1].outcome", is("ok")))
                 .andExpect(jsonPath("$[1].source", is("user")))
                 .andExpect(jsonPath("$[0].transcript", is("hello")));
+    }
+
+    // ---- more than one room ----
+
+    @Test
+    void allTheLightsSaidToADisplayInARoomMeansThatRoom() throws Exception {
+        Cookie user = loginAsUser();
+        Cookie display = pairDisplay(user);
+        placeInRoom(user, displayId(user), "Study");
+        ask(user, "Turn on all the lights").andExpect(status().isOk()); // a phone has no room: the whole home
+
+        ask(display, "Turn off all the lights").andExpect(status().isOk()).andExpect(jsonPath("$.reply", is("Done.")))
+                .andExpect(jsonPath("$.actions", hasItem(BAR_MAIN + ": off"))).andExpect(jsonPath("$.actions", hasSize(2)));
+        mvc.perform(get("/api/devices").cookie(user))
+                .andExpect(jsonPath("$.devices[?(@.id=='fake-light-bar')].channels[?(@.id=='main')].on", hasItem(false)))
+                .andExpect(jsonPath("$.devices[?(@.id=='fake-lamp')].power", hasItem(true)));
+
+        ask(display, "Turn off everywhere").andExpect(status().isOk());
+        mvc.perform(get("/api/devices").cookie(user)).andExpect(jsonPath("$.devices[?(@.id=='fake-lamp')].power", hasItem(false)));
+        assertTrue(model.userTexts.isEmpty());
+    }
+
+    @Test
+    void theModelIsToldWhichRoomTheDisplayIsIn() throws Exception {
+        Cookie user = loginAsUser();
+        Cookie display = pairDisplay(user);
+        placeInRoom(user, displayId(user), "Study");
+        model.onUser = text -> Step.text("Cosy.");
+
+        ask(display, "make it cosy").andExpect(status().isOk());
+        assertTrue(model.userTexts.get(0).contains("in the room \"Study\""), model.userTexts.get(0));
+
+        ask(user, "make it cosy").andExpect(status().isOk());
+        assertFalse(model.userTexts.get(1).contains("in the room"), model.userTexts.get(1));
+    }
+
+    @Test
+    void movingADisplayToAnotherRoomApplies​AtOnce() throws Exception {
+        Cookie user = loginAsUser();
+        Cookie display = pairDisplay(user);
+        String id = displayId(user);
+        placeInRoom(user, id, "Study");
+        mvc.perform(put("/api/credentials/" + id + "/room").cookie(user).contentType(JSON).content("{\"roomId\":null}"))
+                .andExpect(status().isNoContent());
+        model.onUser = text -> Step.text("ok");
+        ask(display, "make it cosy").andExpect(status().isOk());
+        assertFalse(model.userTexts.get(0).contains("in the room"), model.userTexts.get(0));
+    }
+
+    @Test
+    void onlyARealDisplayCanBePutInARealRoom() throws Exception {
+        Cookie user = loginAsUser();
+        pairDisplay(user);
+        String id = displayId(user);
+        mvc.perform(put("/api/credentials/" + id + "/room").cookie(user).contentType(JSON).content("{\"roomId\":999}"))
+                .andExpect(status().isNotFound());
+        mvc.perform(put("/api/credentials/no-such-id/room").cookie(user).contentType(JSON).content("{\"roomId\":null}"))
+                .andExpect(status().isNotFound());
+        // the phone that is signed in is not a display
+        for (var credential : json.readTree(mvc.perform(get("/api/credentials").cookie(user)).andReturn().getResponse().getContentAsString())) {
+            if ("user".equals(credential.path("kind").asString())) {
+                mvc.perform(put("/api/credentials/" + credential.path("id").asString() + "/room").cookie(user).contentType(JSON)
+                        .content("{\"roomId\":null}")).andExpect(status().isNotFound());
+            }
+        }
+        // a display may not do it to itself or to others
+        Cookie display = pairDisplay(user);
+        mvc.perform(put("/api/credentials/" + id + "/room").cookie(display).contentType(JSON).content("{\"roomId\":null}"))
+                .andExpect(status().isForbidden());
     }
 }

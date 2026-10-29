@@ -1,5 +1,5 @@
 import { ApiError } from './api'
-import { assistantMessage, canSend, describeError, errorMessage, userMessage } from './assistantModel'
+import { assistantMessage, canSend, describeError, errorMessage, userMessage, voiceStatusText } from './assistantModel'
 
 describe('assistantModel', () => {
   it('turns a reply into a bubble that keeps what was done and what failed', () => {
@@ -24,5 +24,18 @@ describe('assistantModel', () => {
     expect(canSend('   ')).toBe(false)
     expect(canSend('lamp on')).toBe(true)
     expect(canSend('x'.repeat(501))).toBe(false)
+  })
+
+  it('marks what was said aloud', () => {
+    expect(userMessage(1, 'hi', true).spoken).toBe(true)
+    expect(userMessage(2, 'hi').spoken).toBe(false)
+  })
+
+  it('describes the voice state for the status line', () => {
+    expect(voiceStatusText('idle', false)).toBe('')
+    expect(voiceStatusText('listening', true)).toMatch(/just speak/)
+    expect(voiceStatusText('speaking', false)).toMatch(/tap to stop/)
+    expect(voiceStatusText('speaking', true)).toMatch(/interrupt/)
+    expect(voiceStatusText('thinking', false)).toBe('Thinking…')
   })
 })

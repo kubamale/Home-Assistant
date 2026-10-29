@@ -2,8 +2,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api, ApiError } from '../api'
-import { useSettings } from '../hooks/data'
-import type { Place } from '../types'
+import { useRooms, useSaveVoiceSettings, useSettings, useVoiceSettings, useVoiceStatus, useVoiceVoices } from '../hooks/data'
+import type { Place, VoiceSettings } from '../types'
 
 export function Settings() {
   return (
@@ -15,6 +15,7 @@ export function Settings() {
         </Link>
       </header>
       <LocationSection />
+      <VoiceSection />
       <DisplaysSection />
       <AgentSection />
       <AccountSection />
@@ -120,15 +121,24 @@ function DisplaysSection() {
   const client = useQueryClient()
   const { data } = useQuery({ queryKey: ['credentials'], queryFn: api.credentials })
   const sessions = (data ?? []).filter((c) => c.kind !== 'agent')
+  const rooms = useRooms().data ?? []
 
   const revoke = async (id: string) => {
     await api.revokeCredential(id)
     await client.invalidateQueries({ queryKey: ['credentials'] })
   }
 
+  const setRoom = async (id: string, value: string) => {
+    await api.setDisplayRoom(id, value === '' ? null : Number(value))
+    await client.invalidateQueries({ queryKey: ['credentials'] })
+  }
+
   return (
     <section className="card">
       <h2>Phones and displays</h2>
+      <p className="muted small">
+        Give a display its room: when you talk to it, “the light” and “all the lights” mean that room's lights.
+      </p>
       <ul className="credential-list">
         {sessions.map((c) => (
           <li key={c.id}>
@@ -138,6 +148,20 @@ function DisplaysSection() {
                 {c.kind === 'display' ? 'Display' : 'Phone'} · last used{' '}
                 {c.lastUsedAt ? new Date(c.lastUsedAt).toLocaleDateString() : 'never'}
               </span>
+              {c.kind === 'display' && (
+                <select
+                  aria-label={`Room of ${c.label}`}
+                  value={c.roomId ?? ''}
+                  onChange={(e) => setRoom(c.id, e.target.value)}
+                >
+                  <option value="">No room</option>
+                  {rooms.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.name}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
             {!c.current && (
               <button className="button danger" onClick={() => revoke(c.id)}>
@@ -236,6 +260,129 @@ function AccountSection() {
       <button className="button danger" onClick={logout}>
         Sign out
       </button>
+    </section>
+  )
+}
+
+/** The languages the household speaks, as hints for the listening service. */
+const LANGUAGES = [
+  { code: 'pl-PL', label: 'Polish' },
+  { code: 'en-US', label: 'English' },
+]
+
+const SENSITIVITIES: { value: VoiceSettings['wakeSensitivity']; label: string }[] = [
+  { value: 'low', label: 'Less sensitive' },
+  { value: 'normal', label: 'Normal' },
+  { value: 'high', label: 'More sensitive' },
+]
+
+function VoiceSection() {
+  const { data: saved } = useVoiceSettings()
+  const { data: voices } = useVoiceVoices()
+  const { data: status } = useVoiceStatus()
+  const save = useSaveVoiceSettings()
+  const [edits, setEdits] = useState<VoiceSettings | null>(null)
+  const [playing, setPlaying] = useState(false)
+  const [sampleError, setSampleError] = useState<string | null>(null)
+
+  const draft = edits ?? saved
+  if (!draft) return null
+  const change = (patch: Partial<VoiceSettings>) => setEdits({ ...draft, ...patch })
+  const toggleLanguage = (code: string) =>
+    change({ languages: draft.languages.includes(code) ? draft.languages.filter((l) => l !== code) : [...draft.languages, code] })
+
+  const play = async () => {
+    setSampleError(null)
+    setPlaying(true)
+    try {
+      const url = URL.createObjectURL(await api.voiceSample(draft.voice, draft.style))
+      const audio = new Audio(url)
+      audio.onended = () => URL.revokeObjectURL(url)
+      await audio.play()
+    } catch (e) {
+      setSampleError(e instanceof ApiError ? e.message : 'The sample could not be played.')
+    } finally {
+      setPlaying(false)
+    }
+  }
+
+  return (
+    <section className="card">
+      <h2>Voice</h2>
+      {status && !status.speaking && (
+        <p className="muted small">
+          Talking and listening need a <code>GEMINI_API_KEY</code> on the server.
+        </p>
+      )}
+
+      <fieldset className="voice-languages">
+        <legend className="small muted">I speak (leave both off to detect it)</legend>
+        {LANGUAGES.map((language) => (
+          <label key={language.code} className="check-row">
+            <input type="checkbox" checked={draft.languages.includes(language.code)} onChange={() => toggleLanguage(language.code)} />
+            {language.label}
+          </label>
+        ))}
+      </fieldset>
+
+      <label className="field">
+        Voice
+        <div className="voice-pick">
+          <select value={draft.voice} onChange={(e) => change({ voice: e.target.value })}>
+            {(voices?.voices ?? [draft.voice]).map((voice) => (
+              <option key={voice} value={voice}>
+                {voice}
+              </option>
+            ))}
+          </select>
+          <button type="button" className="button compact" onClick={() => void play()} disabled={playing || !status?.speaking}>
+            {playing ? 'Playing…' : 'Play sample'}
+          </button>
+        </div>
+      </label>
+
+      <label className="field">
+        How to speak (optional)
+        <input type="text" value={draft.style} maxLength={200} placeholder="for example: calm and friendly" onChange={(e) => change({ style: e.target.value })} />
+      </label>
+
+      <label className="check-row">
+        <input type="checkbox" checked={draft.speakReplies} onChange={(e) => change({ speakReplies: e.target.checked })} />
+        Speak the answers out loud
+      </label>
+
+      <label className="field">
+        After the wake word, say
+        <input type="text" value={draft.wakeReply} maxLength={40} placeholder="nothing" onChange={(e) => change({ wakeReply: e.target.value })} />
+        <span className="muted small">So you know it is listening, for example “Yes?” or “Tak?”. Leave it empty for no sound. Only used when answers are spoken.</span>
+      </label>
+
+      <div className="field">
+        Wake word “Hey Jarvis” on door screens
+        <div className="segmented" role="group" aria-label="Wake word sensitivity">
+          {SENSITIVITIES.map((option) => (
+            <button type="button" key={option.value} aria-pressed={draft.wakeSensitivity === option.value} onClick={() => change({ wakeSensitivity: option.value })}>
+              {option.label}
+            </button>
+          ))}
+        </div>
+        <span className="muted small">More sensitive if the screen does not hear you, less if it wakes up by itself. Say it in English.</span>
+      </div>
+
+      {sampleError && <p className="error small">{sampleError}</p>}
+      {save.error && <p className="error small">{save.error.message}</p>}
+      <button
+        className="button primary"
+        disabled={!edits || save.isPending}
+        onClick={() => save.mutate(draft, { onSuccess: () => setEdits(null) })}
+      >
+        {save.isPending ? 'Saving…' : 'Save voice settings'}
+      </button>
+
+      <p className="muted small">
+        What you say is sent to Google (Gemini) to be written down, and the answers to be spoken. On Google's free tier it may use those requests to
+        improve its products; on a paid plan it does not, so use a paid key.
+      </p>
     </section>
   )
 }

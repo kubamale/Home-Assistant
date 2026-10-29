@@ -19,7 +19,7 @@ import dev.kuba.homedisplay.scenes.SceneViews.SceneView;
 final class HomeCatalog {
 
     /** One controllable light: a channel of a device. */
-    record Light(String ref, String deviceId, String channel, String name, String room) {
+    record Light(String ref, String deviceId, String channel, String name, String room, Long roomId) {
     }
 
     record SceneRef(String ref, long id, String name) {
@@ -36,7 +36,7 @@ final class HomeCatalog {
             List<HomeDevice> inRoom = devices.stream().filter(d -> d.present() && Long.valueOf(room.id()).equals(d.roomId())).toList();
             if (!inRoom.isEmpty()) {
                 text.append("Room \"").append(room.name()).append("\":\n");
-                next = describe(text, inRoom, room.name(), next);
+                next = describe(text, inRoom, room, next);
             }
         }
         List<HomeDevice> unassigned = devices.stream()
@@ -58,11 +58,12 @@ final class HomeCatalog {
         this.prompt = text.toString();
     }
 
-    private int describe(StringBuilder text, List<HomeDevice> devices, String room, int next) {
+    private int describe(StringBuilder text, List<HomeDevice> devices, Room room, int next) {
         for (HomeDevice device : devices) {
             for (HomeChannel channel : device.channels()) {
                 String name = device.channels().size() > 1 ? device.name() + " · " + channel.label() : device.name();
-                Light light = new Light("l" + next++, device.id(), channel.id(), name, room);
+                Light light = new Light("l" + next++, device.id(), channel.id(), name, room == null ? null : room.name(),
+                        room == null ? null : room.id());
                 lights.put(light.ref(), light);
                 text.append("  ").append(light.ref()).append("  \"").append(name).append("\"  (")
                         .append(abilities(channel.capabilities())).append(")\n");
@@ -88,6 +89,14 @@ final class HomeCatalog {
     /** The lights and scenes as text for the system prompt. */
     String prompt() {
         return prompt;
+    }
+
+    java.util.Collection<Light> lights() {
+        return lights.values();
+    }
+
+    java.util.Collection<SceneRef> scenes() {
+        return scenes.values();
     }
 
     Optional<Light> light(String ref) {

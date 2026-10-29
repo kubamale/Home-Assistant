@@ -19,7 +19,11 @@ class VoiceUnavailableTest extends IntegrationTest {
     void withoutAnApiKeyTheAssistantExplainsItself() throws Exception {
         Cookie user = loginAsUser();
         mvc.perform(get("/api/voice/status").cookie(user)).andExpect(status().isOk())
-                .andExpect(jsonPath("$.available", is(false)));
+                .andExpect(jsonPath("$.available", is(false)))
+                .andExpect(jsonPath("$.listening", is(false)))
+                .andExpect(jsonPath("$.speaking", is(false)));
+        mvc.perform(post("/api/voice/sample").cookie(user).contentType(MediaType.APPLICATION_JSON).content("{\"voice\":\"Kore\"}"))
+                .andExpect(status().isServiceUnavailable()).andExpect(jsonPath("$.detail", containsString("GEMINI_API_KEY")));
         mvc.perform(post("/api/voice/command").cookie(user).contentType(MediaType.APPLICATION_JSON).content("{\"text\":\"hi\"}"))
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.detail", containsString("ANTHROPIC_API_KEY")));

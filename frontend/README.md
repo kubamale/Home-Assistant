@@ -44,7 +44,7 @@ npm install
 npm run dev          # http://localhost:5173
 ```
 
-The dev server forwards `/api` to `http://localhost:8080`; point it elsewhere with
+The dev server forwards `/api` (including the voice WebSocket) to `http://localhost:8080`; point it elsewhere with
 `BACKEND_URL=http://host:port npm run dev`. Sign in with the dev password `dev`.
 
 To see the wall layout while developing, open `http://localhost:5173/wall` (after signing in as the user
@@ -88,7 +88,7 @@ quality gate.
 | `/wall` | Wall display | a paired display (or a signed-in user) | Redirects to `/pair` when nobody is signed in. |
 | `/` | Dashboard | user | Weather, quick access, calendar, tasks. |
 | `/home` | Home tab | user | Rooms, devices, scenes, with an Edit mode. |
-| `/assistant` | Assistant | user | Type to the assistant: lights, weather, calendar, tasks. |
+| `/assistant` | Assistant | user | Talk or type to the assistant: lights, weather, calendar, tasks. |
 | `/settings` | Settings | user | Location, phones and displays, home agent token, sign out. |
 | `/approve` | Add display | user | Approve a pairing code (opened by the QR code). |
 | anything else | | | Redirects to `/`. |
@@ -122,7 +122,7 @@ If you paired a browser by accident, sign in at `/login`, which replaces the coo
 frontend/
 ├── index.html                   mobile/PWA meta tags, mount point
 ├── vite.config.ts               dev proxy, PWA manifest and service worker, Vitest setup
-├── public/                      app icons
+├── public/                      app icons and voice-worklet.js (the microphone's audio-thread code)
 └── src/
     ├── main.tsx                 providers: StrictMode, QueryClient, Router
     ├── App.tsx                  routes and auth gates
@@ -131,6 +131,7 @@ frontend/
     ├── connection.tsx           the live-update connection (SSE) and its status
     ├── hooks/
     │   ├── data.ts              TanStack Query hooks: reads and mutations
+    │   ├── useVoice.ts          one voice conversation for a page
     │   ├── useClock.ts          current time, ticking each minute
     │   └── useIdle.ts           "nothing touched for N seconds"
     ├── homeModel.ts             pure logic: rooms, quick access, availability, scene results
@@ -138,6 +139,7 @@ frontend/
     ├── calendarRows.ts          pure logic: which calendar rows to show
     ├── format.ts                dates, times, "5 min ago"
     ├── color.ts                 hue/saturation to CSS, colour presets
+    ├── voice/                   microphone, sentence detection, playback and the voice client (see below)
     ├── pages/                   one file per route
     ├── components/              cards, controls, sheets
     └── styles.css               the entire design system and all layouts
@@ -264,18 +266,55 @@ The pure rules (`draftFromAction`, `draftToAction`, `toggleWhite`, …) are in `
 
 ### Assistant (`/assistant`)
 
-A chat: type what you want in your own words, in English or Polish, and the backend works out what that means
-([`backend/README.md`](../backend/README.md#14-the-assistant-text-chat)). Replies appear as bubbles; under each
-answer small tags show **what was actually done** ("Light bar · Background: off") and, in red, what failed. Tapping an
-example sends it. The server remembers the conversation for about two minutes (the page keeps its `conversationId`),
-so "and a bit dimmer" works; **New chat** forgets it. When the server has no API key the page says the assistant is not
-set up and disables the box. The lights change through the usual live updates, so the Home tab follows along.
+A chat you can **talk or type to**, in your own words, in English or Polish
+([`backend/README.md`](../backend/README.md#14-the-assistant-text-chat) for what the assistant can do). Replies appear as
+bubbles; under each answer small tags show **what was actually done** ("Light bar · Background: off") and, in red, what
+failed. Tapping an example sends it. The server remembers the conversation for about two minutes, so "and a bit dimmer"
+works; **New chat** forgets it. When the server has no Anthropic key the page says the assistant is not set up.
+
+Talking (needs a `GEMINI_API_KEY` on the server; without it the microphone button is greyed out with a hint):
+
+- **Tap the microphone**, say a sentence, and stop: the page notices the pause, sends the sentence, shows what it heard as a
+  bubble with a small microphone mark, and plays the spoken answer. The microphone is released afterwards. Tapping while the
+  answer plays stops it. Nothing heard for 8 seconds ends the listening.
+- **Hands-free** (switch): the microphone stays open and listens again after every answer. **Speaking over the answer
+  interrupts it** and your new sentence is sent straight away.
+- **Spoken answers** (switch): mutes the voice on this device; the text always appears. Both switches are remembered per
+  device (`localStorage`, only a convenience).
+- The status line under the chat says what is happening (Listening, Hearing you, Writing that down, Thinking, Speaking); the
+  mic button's ring grows with how loud the room is. Typed and spoken sentences share one conversation.
+- A blocked or missing microphone, a lost connection or a failure at Google are explained in the chat in plain words.
+
+### The voice modules
+
+`src/voice/` is plain TypeScript with the browser parts behind small interfaces, so the logic is testable without audio hardware.
+
+**The wake word.** `VoiceClient` has a third mode, `wake` (the first two are tap to talk and hands-free): the microphone stays open and every frame goes to the wake word detector and, to learn how loud the room is, to the sentence detector; **nothing is sent to the server** (apart from a `ping` every 25 s to keep the connection alive). When the wake word is heard the client takes one sentence (the audio from before the wake word is not sent), and after each answer it keeps listening for 6 s with no wake word needed, then goes back to waiting. Saying the wake word over an answer silences it and listens. **The wake reply:** 0.4 s after the wake word (`ACK_DELAY_FRAMES`), if no sentence has begun, the client sends `{type:"wake"}`; the server answers with a short, silence-trimmed "Yes?" (`ack`, binary frames, `ack_end`) which is played, and which is dropped if it arrives after the person has begun. While it plays its sound is in the microphone, so a second detector (`ACKNOWLEDGING` in `vad.ts`: louder than the room, 160 ms of it) decides whether the person is talking over it, and if so it is cut off and what they say is the sentence. The look-back kept at a wake-up is 0.6 s (the wake word is noticed a little after it ends, so a sentence that goes straight on has its first word in it). The model is the pre-trained **hey jarvis** from [openWakeWord](https://github.com/dscripka/openWakeWord) release v0.5.1, in `public/models/` (checksums and licence in the README there); its pre-trained models are **CC BY-NC-SA 4.0 (non-commercial)**, fine for a home project, not for selling it. To use another wake word, put its model in `public/models/`, change the file name in `wakeDetector.ts` (`MODELS`) and the label in `WallVoice.tsx`. The runtime (`onnxruntime-web`, a 15 MB wasm file) and the models are not precached by the service worker; they are cached the first time they are fetched.
+
+| File | Does |
+|---|---|
+| `public/voice-worklet.js` | Runs on the audio thread: averages the microphone down to 16 kHz mono and posts 20 ms frames of 16-bit samples with their loudness. Plain JS because the browser loads it as a module. |
+| `mic.ts` | `openMic`: `getUserMedia` with the **browser's own echo cancellation, noise suppression and level control**, the worklet, and a stop that releases everything. `describeMicError` turns failures into sentences. |
+| `vad.ts` | The sentence detector, pure arithmetic over loudness readings: measures the room for the first half second (the quietest quarter counts), then a sentence starts after 100 ms of clearly louder sound and ends after 700 ms of quiet (at most 12 s; under 300 ms is discarded). A second, stricter instance (louder, 300 ms sustained) decides whether the person is interrupting the answer, because the assistant's own voice leaks into the microphone. |
+| `pcm.ts`, `player.ts` | Converts the server's 24 kHz PCM and plays it back to back without gaps (`planStart` schedules each piece after the last, with a 200 ms head start for the first); `stop()` silences it at once; `whenDrained` says when everything has been heard. |
+| `transport.ts` | The WebSocket to `/api/voice/session`. |
+| `voiceClient.ts` | The conversation: tap to talk and hands-free modes, 300 ms of lead-in kept so the first syllable is not lost, sending audio in 100 ms batches, following the server's events, barge-in, and releasing the microphone when a turn ends. Everything that counts time counts 20 ms frames, so it is deterministic. |
+| `wakePipeline.ts` | The wake word's audio pipeline, a copy of openWakeWord's (each 80 ms of audio → mel-spectrogram frames, the last 76 → one 96-number embedding, the last 16 embeddings → a score), with the three ONNX models handed in. Pure, so it runs in the browser, in a worker or in Node. |
+| `wakeWorker.ts` | A module web worker that loads onnxruntime-web (one thread, no cross-origin isolation needed) and the models and runs the pipeline off the page's thread; drops frames if it cannot keep up. |
+| `wakeDetector.ts` | The page's side: sends microphone frames to the worker and decides from its scores: a score from the threshold (0.3 / 0.5 / 0.7 for high / normal / low sensitivity) for **2 steps in a row**, after which the score must drop and 1.5 s pass before it can fire again. |
+| `hooks/useVoice.ts` | Wraps the client for React: state, a smoothed microphone level, cleanup on leaving the page. |
+
+The browser lets a page open the microphone and make sound only after a tap, so the client starts from the tap's
+handler. The microphone works on `https://` pages and on `localhost`, but on no other plain-`http` address.
 
 ### Settings (`/settings`)
 
 - **Home location:** search a place (server-side geocoding); saving it sets the weather location and the
   timezone for the whole app.
-- **Phones and displays:** list, revoke, and **Add display** (leads to `/approve`).
+- **Phones and displays:** list, revoke, and **Add display** (leads to `/approve`). Each display has a **room** picker (`PUT /api/credentials/{id}/room`): said to that display, “the light” and “all the lights” mean that room's lights.
+- **Voice:** which languages you speak (hints for listening), the voice with a **Play sample** button (30 voices, a sentence
+  in English and one in Polish), an optional style such as "calm and friendly", and whether answers are spoken. A note says
+  that what you say goes to Google and that a paid key keeps it from being used for training.
 - **Home agent:** create an agent token for the Pi; it is shown **once**, so copy it right away.
 - **Account:** sign out (revokes this phone's session).
 
@@ -297,6 +336,13 @@ set up and disables the box. The lights change through the usual live updates, s
 - **Limited role:** the display can tick tasks, switch lights, and apply scenes. The wall's task card is
   read/tick only.
 - **Offline:** controls disable and a banner explains it ("Reconnecting…" or "Home agent offline").
+- **Voice** (`components/WallVoice.tsx`): a pill at the bottom of the screen. Off until it is tapped once (a browser rule for
+  sound and the microphone; the choice is kept in `localStorage` under `wall-voice`), then it starts by itself and sets itself
+  up again after a lost connection (2 s, doubling to 30 s). It says what is going on: *Say "Hey Jarvis"* (waiting), *Listening…*,
+  *One moment…*, *Thinking…*, *Speaking…*, or why it cannot (the microphone is blocked, the browser needs a tap). What was said
+  and answered appears above it as a solid card (no blur) for 9 s after things go quiet. Tapping the pill turns voice off, or
+  stops an answer being spoken. A moment after the wake word, if you have not started talking, the screen says **"Yes?"** (or whatever is set in Settings → Voice, "After the wake word, say"; empty for silence) so you know it is listening. If you go straight on ("hey jarvis, turn off the light") nothing is said, so it never talks over you. It is hidden when the server has no speech or assistant key. The wake word's sensitivity comes
+  from Settings → Voice. See "The wake word" below.
 
 How the Pi starts the kiosk is in [`deploy/README.md`](../deploy/README.md).
 
@@ -336,9 +382,9 @@ npm test            # vitest run
 npm run typecheck
 ```
 
-30 unit tests of the pure modules: `homeModel.test.ts` (grouping, pinned items, availability, scene result
+64 unit tests of the pure modules and the voice client: `homeModel.test.ts` (grouping, pinned items, availability, scene result
 text), `sceneModel.test.ts` (drafts to actions, white/colour exclusivity), `calendarRows.test.ts`
-(ordering and which rows are dropped), `format.test.ts` (time and relative-time formatting), `assistantModel.test.ts` (chat bubbles and error wording).
+(ordering and which rows are dropped), `format.test.ts` (time and relative-time formatting), `assistantModel.test.ts` (chat bubbles, error wording, status line), and in `src/voice/`: `vad.test.ts` (finding where a sentence starts and ends, learning the room's noise), `pcm.test.ts` (sample conversion, playback scheduling) `wakePipeline.test.ts` and `wakeDetector.test.ts` (the pipeline's arithmetic with fake models, the decision rules with a fake worker), `wakeModels.test.ts` (the **real models** on two short recordings in `src/voice/fixtures/`, compared step by step with openWakeWord's own scores) and `voiceClient.test.ts` (whole conversations driven with a fake microphone, connection and speaker: tap to talk, hands-free, interrupting, timeouts, a blocked microphone, a lost connection).
 
 There are no component or end-to-end tests. The UI was checked by hand in a browser (phone width and
 the wall at 1280×800, light and dark). For an end-to-end check run the full stack with
@@ -391,4 +437,7 @@ display gate.
 | No colour or background controls | The agent is older than the app. Restart the agent ([`agent/README.md`](../agent/README.md#1-quick-start)). |
 | Sliders are greyed out | The light is off, unavailable, or the app is offline; turn it on first. |
 | Old UI after a deploy | The service worker serves the old shell until the next load; reload twice or clear site data. |
+| The microphone button is greyed out | The server has no `GEMINI_API_KEY`, or the page is on plain `http` that is not `localhost`. |
+| "The microphone is blocked" | The browser's site settings block it; allow it for this address and tap again. |
+| It hears itself and keeps interrupting in hands-free mode | Laptop speakers close to the microphone; turn the volume down or use headphones. A USB speakerphone is the plan for the wall. |
 | `tsc` fails on unused variables | `noUnusedLocals`/`noUnusedParameters` are on; remove or use them. |

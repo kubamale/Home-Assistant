@@ -65,7 +65,7 @@ class AnthropicAgentModelTest {
     }
 
     private AnthropicAgentModel model() {
-        return new AnthropicAgentModel(new AppProperties.Voice("test-key", "claude-haiku-5-5", 2048, Duration.ofMinutes(2), 12, 6, 20, 30,
+        return new AnthropicAgentModel(new AppProperties.Voice("test-key", "claude-haiku-5-5", 2048, Duration.ofMinutes(2), 12, 6, 20, 30, true,
                 "http://127.0.0.1:" + server.getAddress().getPort()), json);
     }
 

@@ -1,10 +1,24 @@
 # Voice agent – design proposal (v2)
 
-Status: proposal, revised 2026-10-24 after the goal was clarified: **an agent at the door that listens *and speaks*.** You ask it to switch lights, you ask it "what is the weather today?", and it answers out loud. Nothing here is built. It extends `PRD.md` and `ARCHITECTURE.md`; terms such as *channel*, *scene*, *agent* (the Pi program) and *quick access* are used as defined there. To avoid confusion, this document calls the new thing **the voice agent** (or "the assistant") and the Pi program **the home agent**.
+Status: **partly built** (see the box below). Originally a proposal, revised 2026-10-24 after the goal was clarified: **an agent at the door that listens *and speaks*.** You ask it to switch lights, you ask it "what is the weather today?", and it answers out loud. It extends `PRD.md` and `ARCHITECTURE.md`; terms such as *channel*, *scene*, *agent* (the Pi program) and *quick access* are used as defined there. To avoid confusion, this document calls the new thing **the voice agent** (or "the assistant") and the Pi program **the home agent**.
+
+## Where this stands (2026-10-29)
+
+| Built on `feature/voice-mode` | Not built yet |
+| --- | --- |
+| The typed assistant: Claude Haiku 5.5 with tools, conversations, audit log (V1, first slice). | A custom wake word such as "Hey Home" (the built one is the ready-made "Hey Jarvis"), and anything that needs the Pi's real microphone. |
+| **Listening and speaking through Google's Gemini API** (decision of 2026-10-27, replacing the picks in section 6.2): `gemini-3.5-transcribe` to hear, `gemini-3.8-flash-tts` to speak, 30 voices. | Streaming Claude's answer into speech as it is written (today the whole answer is made first, then spoken sentence by sentence). |
+| **Tap to talk and hands-free in the browser** (V2 and part of V3), on any device with a microphone: the laptop now, the Pi's Chromium later. Sentence detection, interrupting by speaking over the answer, a Voice section in Settings with a sample of each voice. | Aliases for light names, the spoken-detail setting, the evaluation corpus, quiet hours, the Piper offline fallback, proactive announcements (V4). |
+| **Speed** (2026-10-29): plain commands ("turn off the background light", "wyłącz wszystkie światła", a scene by name) are understood by strict rules, without the model, and answered by a remembered "Done." / "Gotowe."; the sentence is **heard while it is spoken** (Gemini Live), so the text is ready about 0.3 s after you stop. A plain command is done and heard about 1 s after the end of speech, from about 4 s. | Skipping the model's second call for compound commands (colour plus brightness still take 4 to 5 s), a shorter wait for silence in the browser (700 ms), and timing the real lamp, whose driver is untouched. |
+| **The wake word on the wall** (2026-10-29): the door screen has voice. It listens on the device for **"Hey Jarvis"** (openWakeWord's pre-trained model, run in the browser; nothing leaves the screen until it is heard), says a short "Yes?" (settable, or silent) if you pause, takes one sentence, and for 6 s after each answer takes the next without it; saying it over an answer interrupts. Sensitivity in Settings → Voice. Checked in a real browser with a synthetic voice, including recovery after the server went away. | Trying it on a Pi (load, echo, real voices; Polish speakers saying "Hey Jarvis" are the open question: a synthetic Polish pronunciation scored 0.14 against 0.99 for the English one), and a custom word. |
+| **Rooms** (2026-10-29): a display can be given a room; said to it, "the light" and "all the lights" mean that room's lights, "everywhere" the whole home, and the model is told where you are. | Two screens that hear the same wake word: only one should answer (matters once there is a wake word). Naming a room in a sentence is left to the model. |
+| | Everything about the Pi: the speakerphone, kiosk flags for the microphone and sound, echo behaviour on real hardware. |
+
+**Checked against the real Gemini API (2026-10-27)** with one spoken sentence each way: the transcription model accepts the recording inline, and the streamed speech arrives as described in `backend/README.md` section 15. Hearing while speaking was checked on 2026-10-29 the same way. Not checked: Polish accuracy and naturalness with a real voice (`app.speech.compare-transcripts=true` logs both transcripts to judge it), and anything on the Pi.
 
 ## 1. Summary
 
-**Decisions so far** (2026-10-24): the brain is **Claude Haiku 5.5 with tools**, behind the rules-and-templates tier (section 4.1); a self-hosted model through Ollama stays an optional later tier, and a home server is still an option (section 4.2) but not decided; the backend stays on the VPS for now. **Speech starting picks (section 6.2, corrected the same day): OpenAI `gpt-transcribe` for speech to text and ElevenLabs Flash v2.5 for text to speech**, to be confirmed by the V0 bake-off. How the agent sounds is configurable per language (section 6.3).
+**Decisions so far** (2026-10-24): the brain is **Claude Haiku 5.5 with tools**, behind the rules-and-templates tier (section 4.1); a self-hosted model through Ollama stays an optional later tier, and a home server is still an option (section 4.2) but not decided; the backend stays on the VPS for now. **Speech (decided 2026-10-27): Google Gemini for both directions** (`gemini-3.5-transcribe` and `gemini-3.8-flash-tts`), replacing the OpenAI and ElevenLabs starting picks of section 6.2, which remain as the alternatives if Gemini's Polish proves weak. How the agent sounds is configurable per language (section 6.3).
 
 The voice agent is a conversation loop that runs between the wall screen and the backend:
 
@@ -23,9 +37,9 @@ you speak → speech to text → Claude (with tools) → text answer → text to
 
 | Phase | What you get |
 | --- | --- |
-| **V1 Text agent** (first slice built on `feature/voice-mode`: the chat, the tool layer, conversation memory, the audit log; still to do: aliases, the rules fast path, the spoken-detail setting, the corpus evaluation) | The brain with all tools, usable by typing or iOS dictation in the phone app (a chat box). Weather, calendar, tasks, lights and scenes by sentence, in Polish and English. Proves the prompts and tools before any audio work. |
-| **V2 Door agent, tap to talk** | The speakerphone, speech in and out at the wall: tap the microphone, speak, hear the answer. A real conversation, without wake-word risk. |
-| **V3 Hands-free** | Wake word, automatic end-of-speech detection, follow-up questions without repeating the wake word, interrupting it while it speaks. |
+| **V1 Text agent** (first slice built on `feature/voice-mode`, with a strict rules fast path for plain on/off and scene commands, 2026-10-27: the chat, the tool layer, conversation memory, the audit log; still to do: aliases, the spoken-detail setting, the corpus evaluation) | The brain with all tools, usable by typing or iOS dictation in the phone app (a chat box). Weather, calendar, tasks, lights and scenes by sentence, in Polish and English. Proves the prompts and tools before any audio work. |
+| **V2 Door agent, tap to talk** (built for the browser; the Pi's speakerphone is still to do) | The speakerphone, speech in and out at the wall: tap the microphone, speak, hear the answer. A real conversation, without wake-word risk. |
+| **V3 Hands-free** (end-of-speech detection, interrupting, the wake word on the wall and the follow-up window are built; a custom wake word and the Pi are not) | Wake word, automatic end-of-speech detection, follow-up questions without repeating the wake word, interrupting it while it speaks. |
 | **V4 Polish** | Offline fallback for light commands, quiet hours, proactive announcements ("rain starts at 15:00"). |
 | **Side track** | Siri Shortcuts and a HomeKit bridge: cheap, complementary ways to control lights from phone, Watch and HomePod (section 11). They are not the agent. |
 
@@ -237,7 +251,7 @@ The Pi's 3.5 mm jack has no microphone input and a bare USB microphone plus a se
 ### 5.2 Activation
 
 1. **Tap to talk** (V2). A microphone button on the wall (the screen is a touchscreen). No false triggers, no wake-word work; a good first version and a permanent fallback.
-2. **Wake word** (V3). A phrase such as "Hey Home" or a short Polish name, detected continuously. Options: **openWakeWord** (open source; trains a custom word from synthetic speech, no recordings needed) or **Picovoice Porcupine** (custom words via its console; free tier aimed at personal projects). Check the licences of the pre-trained models and current Picovoice terms. No published Pi 4 CPU benchmark was found, so measure it on your Pi with Chromium running. The detector runs in the page (WebAssembly) or as a sidecar; I would try the page first.
+2. **Wake word** (V3, built 2026-10-29 as "Hey Jarvis" with openWakeWord's ready-made model, see `frontend/README.md`). A phrase such as "Hey Home" or a short Polish name, detected continuously. Options: **openWakeWord** (open source; trains a custom word from synthetic speech, no recordings needed) or **Picovoice Porcupine** (custom words via its console; free tier aimed at personal projects). Check the licences of the pre-trained models and current Picovoice terms. No published Pi 4 CPU benchmark was found, so measure it on your Pi with Chromium running. The detector runs in the page (WebAssembly) or as a sidecar; I would try the page first.
 3. **Follow-up window.** After the agent answers it keeps listening for about 6–8 seconds without a wake word; silence closes the conversation.
 
 ### 5.3 Speech to text

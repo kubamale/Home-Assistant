@@ -53,7 +53,7 @@ public class SecurityConfig {
                         .hasAnyRole("USER", "DISPLAY")
                         .requestMatchers(HttpMethod.GET, "/api/auth/me", "/api/weather", "/api/tasks",
                                 "/api/calendar/today", "/api/devices", "/api/rooms", "/api/scenes", "/api/settings",
-                                "/api/stream", "/api/voice/status")
+                                "/api/stream", "/api/voice/status", "/api/voice/settings", "/api/voice/session")
                         .hasAnyRole("USER", "DISPLAY")
                         .requestMatchers("/api/**").hasRole("USER")
                         .anyRequest().permitAll()); // the web app's static files must load before login

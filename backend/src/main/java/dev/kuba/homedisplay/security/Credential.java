@@ -9,7 +9,8 @@ public record Credential(
         String label,
         Instant createdAt,
         Instant lastUsedAt,
-        Instant revokedAt) {
+        Instant revokedAt,
+        Long roomId) {
 
     public boolean revoked() {
         return revokedAt != null;
