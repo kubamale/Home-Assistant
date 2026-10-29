@@ -14,7 +14,7 @@ const EVENT_KEYS: Record<string, string[]> = {
   'home.changed': ['rooms', 'devices', 'scenes'],
   'weather.changed': ['weather'],
   'calendar.changed': ['calendar'],
-  'settings.changed': ['settings', 'weather', 'calendar', 'tasks'],
+  'settings.changed': ['settings', 'weather', 'calendar', 'tasks', 'voice'],
 }
 
 const BACKOFF_MS = [1000, 2000, 5000, 10000, 30000]

@@ -13,3 +13,10 @@ app:
     secure-cookies: false
   calendar:
     mode: fake
+    # Tests refresh by hand; a background refresh must not change the data mid-test.
+    initial-delay: PT1H
+  weather:
+    initial-delay: PT1H
+  speech:
+    # Tests count what the speech service is asked to say.
+    warm-phrases: false

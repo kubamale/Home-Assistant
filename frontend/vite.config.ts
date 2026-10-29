@@ -29,13 +29,24 @@ export default defineConfig({
       workbox: {
         // Only the app shell is cached. API data is never served from the service worker.
         navigateFallback: '/index.html',
+        globIgnores: ['**/*.wasm'],
         navigateFallbackDenylist: [/^\/api\//, /^\/agent\//],
+        // The wake word's models and runtime are too big to cache up front; keep them once they have been fetched, so the
+        // door screen can still hear its wake word when the server is briefly out of reach.
+        runtimeCaching: [
+          {
+            urlPattern: ({ url }) => url.pathname.startsWith('/models/') || url.pathname.endsWith('.wasm'),
+            handler: 'CacheFirst',
+            options: { cacheName: 'wake-word', cacheableResponse: { statuses: [200] } },
+          },
+        ],
       },
     }),
   ],
   server: {
     proxy: {
-      '/api': { target: backend },
+      // ws: the voice conversation is a WebSocket under /api
+      '/api': { target: backend, ws: true },
     },
   },
   test: {

@@ -4,6 +4,7 @@ import { DevicePanel } from '../components/DevicePanel'
 import { QuickAccessCard } from '../components/QuickAccessCard'
 import { TasksCard } from '../components/TasksCard'
 import { WallDevices } from '../components/WallDevices'
+import { WallVoice } from '../components/WallVoice'
 import { WeatherCard } from '../components/WeatherCard'
 import { ConnectionNotice } from '../components/StatusBar'
 import { formatClock, formatDate } from '../format'
@@ -63,6 +64,7 @@ export function Wall() {
         </div>
       )}
       {panel && <DevicePanel deviceId={panel} onClose={closePanel} />}
+      <WallVoice />
     </div>
   )
 }

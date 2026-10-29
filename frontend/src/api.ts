@@ -13,6 +13,10 @@ import type {
   SessionInfo,
   Settings,
   Task,
+  VoiceReply,
+  VoiceSettings,
+  VoiceStatus,
+  VoiceVoices,
   WeatherSnapshot,
 } from './types'
 
@@ -110,12 +114,39 @@ export const api = {
   forgetDevice: (id: string) => request<void>('DELETE', `/api/devices/${encodeURIComponent(id)}`),
   setQuickAccess: (items: PinItem[]) => request<void>('PUT', '/api/quick-access', { items }),
 
+  // assistant
+  voiceStatus: () => request<VoiceStatus>('GET', '/api/voice/status'),
+  voiceCommand: (text: string, conversationId: string | null) =>
+    request<VoiceReply>('POST', '/api/voice/command', { text, conversationId }),
+  voiceSettings: () => request<VoiceSettings>('GET', '/api/voice/settings'),
+  saveVoiceSettings: (settings: VoiceSettings) => request<VoiceSettings>('PUT', '/api/voice/settings', settings),
+  voiceVoices: () => request<VoiceVoices>('GET', '/api/voice/voices'),
+  /** A spoken sample of a voice, as audio to play. */
+  voiceSample: async (voice: string, style: string): Promise<Blob> => {
+    const response = await fetch('/api/voice/sample', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ voice, style }),
+    })
+    if (!response.ok) {
+      let message = response.statusText
+      try {
+        message = (await response.json()).detail ?? message
+      } catch {
+        // not a JSON error body
+      }
+      throw new ApiError(response.status, message)
+    }
+    return response.blob()
+  },
   // settings
   geocode: (q: string) => request<Place[]>('GET', `/api/geocode?q=${encodeURIComponent(q)}`),
   saveLocation: (place: { name: string; latitude: number; longitude: number; timezone: string }) =>
     request<Settings>('PUT', '/api/settings/location', place),
   credentials: () => request<CredentialView[]>('GET', '/api/credentials'),
   revokeCredential: (id: string) => request<void>('DELETE', `/api/credentials/${id}`),
+  setDisplayRoom: (id: string, roomId: number | null) => request<void>('PUT', `/api/credentials/${id}/room`, { roomId }),
   createAgentToken: (label: string) =>
     request<{ id: string; token: string }>('POST', '/api/credentials/agent', { label }),
 }

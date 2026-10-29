@@ -26,6 +26,14 @@ export function PhoneTabs() {
             </svg>
             Home
           </NavLink>
+          <NavLink to="/assistant" className="tab">
+            <svg {...icon}>
+              <path d="M5 5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-7l-4.5 3.5V17H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z" />
+              <path d="M8 10h8" />
+              <path d="M8 13h5" />
+            </svg>
+            Assistant
+          </NavLink>
         </div>
       </nav>
     </>

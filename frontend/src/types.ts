@@ -201,6 +201,8 @@ export interface CredentialView {
   createdAt: string
   lastUsedAt: string | null
   current: boolean
+  /** The room a display is in; phones and the agent have none. */
+  roomId: number | null
 }
 
 export interface PairStart {
@@ -209,4 +211,39 @@ export interface PairStart {
   approvePath: string
   expiresIn: number
   pollIntervalSeconds: number
+}
+
+/** The answer to one sentence typed to the assistant. */
+export interface VoiceReply {
+  reply: string
+  /** What was done, for example "Desk lamp: on, 40%". */
+  actions: string[]
+  /** What was attempted and did not work. */
+  failed: string[]
+  conversationId: string
+}
+
+/** `available`: the typed assistant works. `listening` and `speaking`: the microphone and the speaker do. */
+export interface VoiceStatus {
+  available: boolean
+  model: string
+  listening: boolean
+  speaking: boolean
+}
+
+export interface VoiceSettings {
+  voice: string
+  style: string
+  /** Hints for the listening service, such as pl-PL; empty lets it detect the language. */
+  languages: string[]
+  speakReplies: boolean
+  /** How easily a door screen takes a sound for its wake word. */
+  wakeSensitivity: 'low' | 'normal' | 'high'
+  /** What a door screen says when it hears the wake word, such as "Yes?"; empty for nothing. */
+  wakeReply: string
+}
+
+export interface VoiceVoices {
+  voices: string[]
+  defaultVoice: string
 }

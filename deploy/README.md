@@ -98,6 +98,8 @@ laptop against `http://localhost:8080` with a token from **Settings → Home age
 | Variable | Effect |
 |---|---|
 | `LOCAL_PORT` | Host port (default 8080). |
+| `ANTHROPIC_API_KEY` | Enables the Assistant tab locally. Put it in the untracked `.env`. |
+| `GEMINI_API_KEY` | Enables the microphone locally (also in `.env`). The browser allows the microphone on `http://localhost`, but on any other address it needs HTTPS. |
 | `LOCAL_CALENDAR_MODE` | `fake` (default, sample events) or `caldav` for a real calendar. |
 | `LOCAL_CALDAV_USERNAME`, `LOCAL_CALDAV_PASSWORD` | iCloud login for `caldav`: the Apple ID e-mail and an **app-specific password**. |
 
@@ -142,6 +144,8 @@ Then open `https://<DOMAIN>`, sign in, and set your location in Settings.
 | `CALDAV_USERNAME` | with `caldav` | Apple ID e-mail. |
 | `CALDAV_PASSWORD` | with `caldav` | An **app-specific password** (account.apple.com → Sign-In and Security → App-Specific Passwords). Never the Apple ID password. |
 | `CALDAV_CALENDARS` | no | Only these calendars, by name, comma-separated. Empty means all. |
+| `ANTHROPIC_API_KEY` | no | Enables the Assistant tab (Claude). Without it the tab says it is not set up. Create one at console.anthropic.com; it is billed per use. |
+| `GEMINI_API_KEY` | no | Enables talking and listening (Google Gemini). Without it the microphone button is off and typing works. Create one at aistudio.google.com and **turn on billing**: on the free tier Google may use your requests, including your voice, to improve its products. |
 
 `.env` is in `.gitignore` and `.dockerignore`. Compose passes these to the app as `APP_*` variables
 (full list in [`backend/README.md`](../backend/README.md#2-configuration)). `APP_DEVICES_MODE` is fixed to
@@ -293,6 +297,29 @@ settings differ between OS versions; on Wayland, `xset` does nothing, so disable
 
 If the Chromium profile is wiped, the screen simply asks to be paired again.
 
+### Voice on the Pi
+
+The wall page has voice: it listens for the wake word **"Hey Jarvis"** on the device itself (nothing leaves the Pi until it
+hears it), then sends one sentence, and for a few seconds after the answer takes the next without the wake word. The wake
+word needs no setup on the server. **None of this has been tried on a Pi**; it was tried in a laptop browser with a synthetic
+voice. What `kiosk.sh` does for it, and what is still open:
+
+- **Microphone permission.** Chromium asks before opening the microphone, and a kiosk has nobody to click, so `kiosk.sh`
+  starts it with `--use-fake-ui-for-media-stream` (accepts the prompt). The page must be served over HTTPS, which production
+  already is.
+- **Sound.** Browsers only play audio after a tap; `--autoplay-policy=no-user-gesture-required` lifts that for a kiosk.
+- **Turning it on.** Voice is off until someone taps the small microphone pill at the bottom of the screen once; that choice is
+  remembered in the browser, and from then on the screen starts listening by itself after a reboot and after a lost connection.
+  Tapping the pill again turns voice off (and tapping it while the answer is being spoken stops the answer).
+- **Load.** The wake word runs three small neural networks every 80 ms in a web worker (about 3 % of one core on a laptop;
+  **not measured on a Pi**, where it will be several times that). The first load fetches about 15 MB (the runtime and the three
+  models) and Chromium keeps them afterwards.
+- **Hardware.** The plan is a USB speakerphone with its own echo cancellation, because a separate microphone and speaker
+  next to each other will hear the assistant talking. Its choice and the echo behaviour are the open items of the plan in
+  [`VOICE-CONTROL.md`](../VOICE-CONTROL.md). Chromium uses the system's default input and output.
+- **Sensitivity.** If the screen does not hear "Hey Jarvis" (an accent matters: the model is trained on English), raise
+  **Wake word sensitivity** in the app's Settings → Voice; if it wakes up by itself, lower it.
+
 ### Reducing wear and load
 
 SD cards wear out from frequent writes: limit journald size (`SystemMaxUse=` in
@@ -345,6 +372,7 @@ hundred MB. Caddy needs little.
 - [ ] `APP_PASSWORD_HASH` is set (not the plain `APP_PASSWORD`), and the password is long.
 - [ ] `docker-compose.local.yml` contains no real secrets (calendar login lives in `.env`).
 - [ ] The calendar uses an app-specific password, which can be revoked on its own.
+- [ ] The Anthropic and Gemini keys live only in `.env`; they are spending credentials, so set spend limits on them. The Gemini key must be on a **paid** plan, because a microphone in a home must not be on the free tier that may train on requests.
 - [ ] Backups of the `data` volume exist and are stored off the server.
 - [ ] The agent token exists only in `/etc/homedisplay/agent.json` (or the unit's override) on the Pi.
 - [ ] Only HTTPS is exposed; the app container publishes no ports itself.

@@ -28,3 +28,21 @@ export function GearIcon({ className }: { className?: string }) {
     </svg>
   )
 }
+
+export function MicIcon({ className }: { className?: string }) {
+  return (
+    <svg {...base} className={className}>
+      <rect x="9" y="3" width="6" height="11" rx="3" />
+      <path d="M5.5 11.5a6.5 6.5 0 0 0 13 0" />
+      <path d="M12 18v3" />
+    </svg>
+  )
+}
+
+export function StopIcon({ className }: { className?: string }) {
+  return (
+    <svg {...base} className={className}>
+      <rect x="6.5" y="6.5" width="11" height="11" rx="2.5" fill="currentColor" />
+    </svg>
+  )
+}

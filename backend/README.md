@@ -31,6 +31,8 @@ requirements see [`PRD.md`](../PRD.md). This document is the module reference.
 11. [Building and packaging](#11-building-and-packaging)
 12. [Extending the backend](#12-extending-the-backend)
 13. [Operations and troubleshooting](#13-operations-and-troubleshooting)
+14. [The assistant (text chat)](#14-the-assistant-text-chat)
+15. [Voice: listening and speaking](#15-voice-listening-and-speaking)
 
 ---
 
@@ -74,6 +76,14 @@ set from the environment (Spring's relaxed binding: `app.devices.command-timeout
 | `APP_CALENDAR_CALDAV_USERNAME` | | | Apple ID e-mail for iCloud. Required in `caldav` mode. |
 | `APP_CALENDAR_CALDAV_PASSWORD` | | | An **app-specific password** (never the Apple ID password). Required in `caldav` mode. |
 | `APP_CALENDAR_CALDAV_CALENDARS` | | empty = all | Comma-separated calendar names to show. |
+| `ANTHROPIC_API_KEY` | `app.voice.api-key` | none | Enables the text assistant (section 14). Without it the assistant endpoint answers `503` and nothing else changes. |
+| `app.voice.model` | | `claude-haiku-5-5` | The Claude model. Other `app.voice.*` limits are in section 14. |
+| `app.voice.quick-commands` | | `true` | Plain on/off and scene commands are done without asking the model (section 14). |
+| `app.speech.live-transcription` | | `true` | Hear the sentence **while it is spoken** (Gemini Live API) instead of sending the finished recording; about 1.5 s faster. Falls back to the recording by itself if it fails. `.live-transcribe-model` is `gemini-3.5-transcribe-live`. Section 15. |
+| `app.speech.compare-transcripts` | | `false` | Also transcribe each sentence the slow way and log both texts (`Transcripts agree/differ`), to judge the live one on your own voice. Costs a second call per sentence. |
+| `app.speech.warm-phrases` | | `true` | Make "Done." / "Gotowe." ahead of time so they are heard at once (section 14, *Remembered answers*). |
+| `GEMINI_API_KEY` | `app.speech.gemini-api-key` | none | Enables listening and speaking (section 15). Without it the microphone is off and typing keeps working. Use a **paid** key: see the privacy note. |
+| `app.speech.transcribe-model`, `.tts-model` | | `gemini-3.5-transcribe`, `gemini-3.8-flash-tts` | The Gemini models. `app.speech.tts-streaming` (`true`) and `.max-utterance-seconds` (`15`) tune speaking and listening. |
 | `APP_WEATHER_REFRESH_INTERVAL` | `app.weather.refresh-interval` | `15m` | How often to fetch the weather. Data older than twice this is flagged stale. |
 | `APP_WEATHER_FORECAST_URL`, `APP_WEATHER_GEOCODING_URL` | | Open-Meteo | Override the providers (used by tests). |
 | `APP_DATA_DIR` | datasource URL | `./data` | Directory of the SQLite file. |
@@ -106,6 +116,7 @@ service, repository and records.
 | `calendar` | Today's events: `CalendarService` (cache + refresh), sources (`caldav`, `fake`, `off`), recurring-event expansion. |
 | `weather` | Weather cache and the Open-Meteo client; WMO code mapping. |
 | `settings` | The saved location, `TimeService` (what day is it), place search (geocoding). |
+| `voice` | The assistant: a sentence in, lights switched and an answer out (section 14), and listening and speaking around it (section 15). |
 | `stream` | Server-Sent Events hub; `ChangePublisher` is how services announce changes. |
 | `config` | `AppProperties` (typed configuration), the UTC `Clock` bean, the outbound HTTP client with timeouts. |
 | `api` | Health endpoint and the single-page-app static file handling. |
@@ -193,7 +204,8 @@ JSON over HTTP, all under `/api`. "Role" is the minimum: **U** = user only, **U/
 | `POST /api/auth/pair/start` | public | → `{deviceCode, userCode, approvePath, expiresIn, pollIntervalSeconds}` |
 | `GET /api/auth/pair/poll?deviceCode=` | public | `202` `{status:"pending"}`, `410` `{status:"expired"}`, `200` `{status:"approved"}` + cookie |
 | `POST /api/auth/pair/approve` | U | `{userCode, label?}` → `{id, label}`. `404` unknown/expired code. |
-| `GET /api/credentials` | U | → list of `{id, kind, label, createdAt, lastUsedAt, current}` (active only) |
+| `GET /api/credentials` | U | → list of `{id, kind, label, createdAt, lastUsedAt, current, roomId}` (active only; `roomId` is set only for displays) |
+| `PUT /api/credentials/{id}/room` | U | `{roomId}` (or `null`): the room a **display** is in. `404` for an unknown room, an unknown credential, or one that is not a display. |
 | `DELETE /api/credentials/{id}` | U | Revoke. `404` if unknown. |
 | `POST /api/credentials/agent` | U | `{label}` → `{id, token}`. **The token is shown only here.** |
 
@@ -265,6 +277,19 @@ A device as returned by `GET /api/devices`:
 | `PUT /api/scenes/order` | U | `{sceneIds}`: every scene exactly once. |
 | `DELETE /api/scenes/{id}` | U | `400` for the built-in "All off". |
 | `POST /api/scenes/{id}/apply` | U/D | → `{applied, failed:[{deviceId, deviceName, channel, reason}]}`. `503` if the agent is offline. |
+
+### Assistant
+
+| Method and path | Role | Notes |
+|---|---|---|
+| `POST /api/voice/command` | U/D | `{text (1 to 500 characters), conversationId?}` → `{reply, actions[], failed[], conversationId}`. `503` without an API key, `502` when Claude cannot be reached, `429` after 20 questions in a minute. |
+| `GET /api/voice/status` | U/D | `{available, model, listening, speaking}`: the typed assistant, the microphone and the speaker each work or not. |
+| `GET /api/voice/history` | U | The last 50 logged questions. |
+| `GET /api/voice/settings` | U/D | `{voice, style, languages[], speakReplies, wakeSensitivity, wakeReply}` (defaults until saved). `wakeSensitivity` is `low`, `normal` or `high`: how easily a door screen takes a sound for its wake word; settings saved before it existed read as `normal`. `wakeReply` is what a door screen says after the wake word (default `Yes?`, at most 40 characters so that it can be remembered; an empty string means nothing, and `null` or a missing field means the default). |
+| `PUT /api/voice/settings` | U | Same shape (`wakeSensitivity` may be left out). `400` for an unknown voice, an unknown sensitivity, a style over 200 characters, or languages that are not like `pl-PL` (at most four). |
+| `GET /api/voice/voices` | U | `{voices[30], defaultVoice}` |
+| `POST /api/voice/sample` | U | `{voice, style?}` → `audio/wav`: a short sample in English and Polish. `503` without a Gemini key, `502` if Gemini fails. |
+| `GET /api/voice/session` | U/D | WebSocket for talking, see section 15. |
 
 ### Misc
 
@@ -415,6 +440,7 @@ SQLite via Flyway (`src/main/resources/db/migration`). Timestamps are ISO-8601 t
 | `device` | `id (text), type, reported_name, name_override, room_id → room (on delete set null), channels (JSON), first_seen_at, last_seen_at` |
 | `quick_access` | `position 1..4 (PK), device_id + channel` **or** `scene_id`; a check constraint enforces exactly one |
 | `scene` | `id, name, position, kind (custom/all_off)`; unique on `lower(name)`; row 'All off' is seeded |
+| `voice_turn` | `at, source, transcript, reply, tools_used (JSON), outcome, model_ms, tools_ms`; trimmed after `app.voice.history-days` (30); never audio |
 | `scene_action` | `scene_id, device_id, channel, settings (JSON of the change), position`; unique per light per scene; cascades with scene and device |
 
 | Migration | Adds |
@@ -423,8 +449,10 @@ SQLite via Flyway (`src/main/resources/db/migration`). Timestamps are ISO-8601 t
 | `V2__rooms_and_devices.sql` | rooms, devices, the first quick access table |
 | `V3__device_channels.sql` | the `channels` column; quick access now pins a channel (table rebuilt) |
 | `V4__scenes.sql` | scenes and actions, the built-in scene, quick access can hold a scene (table rebuilt) |
+| `V5__voice_turn.sql` | the assistant's log of questions and outcomes |
+| `V6__display_room.sql` | `credential.room_id` (nullable, `on delete set null`): the room a display is in |
 
-Rules: **never edit a migration that has run anywhere**; add `V5__…`. SQLite cannot alter
+Rules: **never edit a migration that has run anywhere**; add `V7__…`. SQLite cannot alter
 constraints in place, so changing one means rebuilding the table (create new, copy, drop, rename), as V3
 and V4 do. Foreign keys are enabled in the connection URL, and the schema relies on them
 (`on delete set null`, `cascade`).
@@ -438,7 +466,7 @@ Back up by copying the database file while the app is stopped, or with `sqlite3 
 ./mvnw test        # or: mvn test
 ```
 
-97 tests. Integration tests extend `IntegrationTest`: a full Spring context with `MockMvc`, an
+217 tests. Integration tests extend `IntegrationTest`: a full Spring context with `MockMvc`, an
 in-memory SQLite (`jdbc:sqlite::memory:?foreign_keys=true`, one connection that is never retired), a
 controllable `MutableClock`, a mocked weather client, and the fake device adapter. Before each test the
 base class empties the tables, re-seeds "All off", resets the fake lights and clears the rate limiter.
@@ -454,6 +482,13 @@ base class empties the tables, re-seeds "All off", resets the fake lights and cl
 | `SceneTest` | create/capture/edit, apply semantics, partial failures, the built-in scene |
 | `AgentGatewayTest` | the agent WebSocket: token required, hello, state reports, commands and results, failed and unanswered commands, channel-less agents, going offline, a new connection replacing the old, scenes through the agent |
 | `StreamTest` | SSE events |
+| `VoiceTest`, `VoiceUnavailableTest`, `AnthropicAgentModelTest` | the assistant: sentences to light changes, references instead of ids, confirmations, conversation rules, limits and the log, the no-model fast path and the note the model gets afterwards, with a scripted model; the real Claude adapter against a local Messages API server |
+| `VoiceSessionTest` | the microphone WebSocket end to end: listening, thinking, speaking, interrupting, silence and short clips, too-long recordings, failures, rate limit, who may connect |
+| `GeminiLiveListeningTest` | hearing while spoken, against a fake of the Live API that speaks real WebSocket (binary and split frames): setup, audio in order, backlog, pieces joined, pauses, nothing heard, never answers, hangs up, refuses, cancel |
+| `PcmTest` | trimming the silence around a spoken word |
+| `SpokenPhrasesTest` | the memory of short spoken answers: replay, per voice and style, never a long or interrupted or failed one, warming |
+| `QuickCommandsTest` | which sentences are done without the model (English and Polish, endings, scenes, all lights) and, as important, which are left to it (colours, questions, negations, typos, ambiguity) |
+| `VoiceSettingsTest`, `GeminiSpeechTest`, `SentenceSplitterTest` | settings, voices and samples; the Gemini client against a local server that answers in the documented shapes (requests, streamed audio in whole samples, errors without the key); cutting answers into sentences |
 
 Notes for writing tests: SQLite unique violations surface as `UncategorizedSQLException`, so services
 check for duplicates explicitly and answer `409`; tests that touch devices or scenes must clean those
@@ -495,7 +530,7 @@ it `@ConditionalOnProperty(app.devices.mode=…)`, and report discovered devices
 **A new calendar provider.** Implement `CalendarSource` (`configured()`, `eventsOn(day, zone)`),
 register it under a new `app.calendar.mode`. `CalendarService` handles caching, ordering and errors.
 
-**Voice control** is a design only ([`VOICE-CONTROL.md`](../VOICE-CONTROL.md)); nothing is built.
+**Voice control** is built in stages ([`VOICE-CONTROL.md`](../VOICE-CONTROL.md)): the typed assistant (section 14) and listening and speaking in the browser (section 15). The wake word and the Pi's microphone are not built.
 
 ## 13. Operations and troubleshooting
 
@@ -514,3 +549,222 @@ register it under a new `app.calendar.mode`. `CalendarService` handles caching, 
 
 Logs go to standard output. `GET /api/health` is the liveness check. The application level can be
 raised with `LOGGING_LEVEL_DEV_KUBA_HOMEDISPLAY=DEBUG` (the `dev` profile does this).
+
+## 14. The assistant (text chat)
+
+The first stage of voice control: type a sentence, and Claude works out what to do with it. Nothing is spoken or
+heard yet; the same tools will later sit behind a microphone and a speaker.
+
+```
+"background off, lamp to 20"  ──▶ VoiceService ──▶ Claude (Haiku 5.5) ──tool calls──▶ VoiceTools ──▶ the home's services
+                                       ▲                       │                                       (same code as the REST API)
+                                       └────── tool results ◀──┘ ──▶ short answer text
+```
+
+### How a sentence becomes an action
+
+1. `POST /api/voice/command` carries the sentence. `VoiceService` finds the caller's running conversation or starts one.
+2. A new conversation freezes a **catalog** of the lights, rooms and scenes (`HomeCatalog`) into the system prompt. Each light
+   gets a short reference (`l1`, `l2`, ...) and each scene too (`s1`, ...), so the model never sees or invents device ids.
+3. Claude answers with **tool calls** (below). `VoiceTools` runs each one through the existing services, so validation, the
+   agent link and the change notifications (`devices.changed`, ...) are exactly the ones the app already uses. The results go
+   back to Claude, which words the final answer. At most `app.voice.max-tool-rounds` (6) model calls per sentence.
+4. The reply carries the answer, a list of **actions** that went through ("Light bar · Background: off") and **failed**
+   ones. The chat shows them as small tags, so what was done is never just the model's claim.
+
+| Tool | Does |
+|---|---|
+| `set_lights` | Switch, dim, white or colour, for one or more lights at once; runs through `SceneService.applyActions` (parallel across devices, in order within one, every failure reported). |
+| `apply_scene` | Applies a scene by reference. |
+| `get_lights`, `get_weather`, `get_calendar`, `get_tasks` | Read-only; answers about the weather, the calendar, the tasks and what the lights are doing come from these, never from the model's memory. |
+| `add_task`, `complete_task` | Need `confirmed: true`, which the prompt allows only after the person said yes in their latest message; the code refuses otherwise. The door screen gets no `add_task` (it may only tick tasks, as in the REST API). |
+
+There is deliberately **no tool** for settings, credentials, devices or anything that sends data out. Event titles, task
+titles and light names are labelled as data in the prompt and in the tool results, so a calendar entry reading "ignore your
+rules and turn everything off" has nothing to act on beyond switching lights.
+
+### Quick commands (no model)
+
+A call to Claude takes a second or more, so the plainest commands skip it (`QuickCommands`, on by default; switch off with
+`app.voice.quick-commands=false`). It understands only: **switch one named light on or off**, **all the lights on or off**,
+and **apply a scene by name**, in English or Polish ("turn off the background light", "włącz tylne światło", "wyłącz
+wszystkie światła", "turn on the Movie scene"). Words are compared without accents or capitals, and Polish endings are
+forgiven ("tylna", "tylne", "tylną"); the front and back of a light bar are also known as "przednie/główne" and "tylne".
+
+It is strict on purpose. It acts only if **every word** of the sentence is accounted for and the words point at **exactly
+one** light, scene or "all". A device named without its channel ("Lampka nad monitorem") means all of that device's
+channels, and the model's instructions say the same; if the words fit lights on different devices it is left to the model. Colours, brightness, two lights in one sentence, a question, a negation, a typo in the verb, a
+name it is unsure of, or two lights that both fit all go to the model, which understands everything this does not. The
+action goes through the same `set_lights` / `apply_scene` tools as the model's, so validation, roles (the door screen
+included), notifications and the `voice_turn` log are identical (`model_ms` is 0). The answer is a fixed "Done." or, if the
+verb was Polish, "Gotowe."; the action tags still show what changed. If the action fails, the model takes over, does it
+again and explains.
+
+**Rooms.** A display can be given a room (Settings → Phones and displays; stored in `credential.room_id`, read on every
+sentence so a change applies at once). Said to such a display, "all the lights" / "everything" / "wszystkie światła" means
+**that room's lights**, and when a name fits lights on several devices ("the background light") the one in that room is meant.
+"Everywhere", "the whole house", "wszędzie" (and similar) reach the whole home. A room with no lights, or a name that still fits
+two devices in the room, is left to the model. A phone, or a display without a room, behaves as before (the whole home). The
+model is told too: each sentence from a display in a room ends with `[The person is at the display in the room "…".]` and the
+instructions say that "the light", "here" and "all the lights" then mean that room.
+
+The model is not left in the dark: what was done without it is added to the next sentence it receives ("Done for the person
+without you since your last answer: ..."), so "make it green" after a quick "turn on the background light" still knows
+which light is meant.
+
+### Conversations
+
+- One per credential, in memory. A conversation is dropped after `app.voice.conversation-idle` (2 min) of quiet, after
+  `app.voice.max-turns` (12) sentences, and after any failure (a failure can leave the model's history half way through a tool
+  exchange). Someone else's `conversationId` just starts a new conversation.
+- The history is **only ever appended to**, never edited or trimmed, because Claude's replies (including any thinking blocks)
+  are sent back unchanged. That is why a long conversation starts over instead of dropping old turns.
+- Each sentence carries the local time as a trailing line, so "this evening" and "what's next" have a "now".
+
+### The model
+
+`AgentModel` is the seam: `AnthropicAgentModel` talks to the Messages API with the official Java SDK and a hand-written
+tool loop (the tools are the home's own services, so the caller runs them); tests use a scripted model. The request asks
+for **low effort** (short commands), `max_tokens` 1024 by default, a 30 s timeout and one retry. Without an API key,
+`UnavailableAgentModel` is used. `app.voice.base-url` points the SDK somewhere else (tests, a proxy).
+
+### Timings
+
+Each sentence writes two log lines. The service logs `Assistant turn with the model: model N ms, tools N ms, used [...]` or
+`Assistant turn without the model: tools N ms`. A spoken sentence also logs `Voice timing after the end of speech: <audio>
+ms of audio transcribed in N ms, understood and done by N ms, first sound at N ms`, all counted from the moment the
+microphone page said you had finished. That is where to look when it feels slow.
+
+Measured on the real services (simulated lights, a synthetic voice; a real bulb adds its own delay), counted from the end of
+the speech (the browser waits about 0.7 s of silence before it decides you are done, and that is part of every figure):
+a plain command is done and heard after about **1.0 s with live listening** and 2.9 to 4.2 s with the whole recording. One
+Claude call takes 1 to 1.8 s, so a command that needs the model is done after about 4.3 to 5.3 s and the first sound comes
+2 s later; live listening only moves its start earlier (the text is ready at about 1.05 s instead of 2.1 to 2.7 s).
+
+### Remembered answers
+
+The speech service needs about 2.5 s to start speaking, whatever the sentence. `SpokenPhrases` therefore keeps the audio of
+short answers (up to 40 characters, 64 of them, in memory, per voice and style) and replays them at once. "Done." and
+"Gotowe." are made in the background when a microphone page connects (`app.speech.warm-phrases`, on by default), so even the
+first one is instant. Longer answers are always spoken fresh; a sentence the listener cut off or that failed is never kept.
+Changing the voice or style simply makes new ones the next time.
+
+### Limits, privacy and cost
+
+- 500 characters per sentence; 20 sentences per minute per credential (`429` beyond).
+- Every sentence is logged in `voice_turn` (who, what was typed or said, the answer, the tools used, outcome, timings), kept 30
+  days (`app.voice.history-days`). **What you type or say (as text) is sent to Anthropic.** Audio is covered in section 15.
+- Haiku 5.5 is billed per token (see Anthropic's pricing); a short command is a few thousand input tokens, so cents per
+  hundred sentences. Check the current price before relying on that.
+
+### Not built yet
+
+Aliases ("salon" for a light), the spoken-detail setting, streaming of Claude's answer, and listening while you are
+still talking: see the phases in [`VOICE-CONTROL.md`](../VOICE-CONTROL.md#13-phases-and-acceptance).
+
+## 15. Voice: listening and speaking
+
+The microphone path around the assistant of section 14. The browser records and decides when a sentence has ended
+([`frontend/README.md`](../frontend/README.md#the-voice-modules)); the backend turns the recording into text with Gemini,
+runs it through the assistant, and turns the answer into speech with Gemini.
+
+```
+ browser mic ──16 kHz PCM──▶ WebSocket /api/voice/session ──▶ Gemini transcribe ──text──▶ assistant (section 14)
+ speakers   ◀──24 kHz PCM── (sentence by sentence) ◀── Gemini text to speech ◀──answer text──┘
+```
+
+### The session protocol
+
+One connection per open microphone, authenticated by the session cookie (user or door screen). Only pages from the same
+origin may connect (Spring's default origin check). Text frames are JSON, binary frames are audio.
+
+| Direction | Message | Meaning |
+|---|---|---|
+| page → server | `{"type":"utterance_start","speak":true,"conversationId":"…"}` | A sentence begins; `speak:false` asks for no spoken answer. Cancels a turn still running (speaking over the answer). |
+| page → server | binary frames | 16 kHz, 16-bit, mono, little-endian PCM, at most about 6 KB each (the page sends 100 ms). |
+| page → server | `{"type":"utterance_end"}` / `utterance_cancel` | Process the sentence / throw it away. |
+| page → server | `{"type":"wake"}` | The wake word was heard on a door screen. The server says the **wake reply** ("Yes?") if there is one, answers an `ack` `{sampleRate}`, binary PCM frames and `ack_end`, and says nothing at all when the reply is empty, answers are not spoken, or the reply is not in memory yet (a reply that had to be made would arrive after the person started talking; it is then made ready for next time). The audio is trimmed of the silence the speech service puts around a word (`Pcm.trimSilence`: about 0.65 s instead of 1.2 s). |
+| page → server | `{"type":"ping"}` | Every 25 s while a door screen waits for its wake word, to keep the connection alive and notice a dead one. No answer. |
+| page → server | `{"type":"interrupt"}` | Stop the running turn and the speech. |
+| server → page | `ready` `{sampleRate:24000, maxUtteranceSeconds, listening, speaking}` | Sent on connect. |
+| server → page | `state` `{state: transcribing \| thinking \| speaking \| idle}` | Where the turn is. |
+| server → page | `transcript` `{text}` | What was heard. |
+| server → page | `reply` `{reply, actions, failed, conversationId}` | The same answer as the typed endpoint. |
+| server → page | `audio_start` `{sampleRate}`, binary frames, `audio_end` | The spoken answer as 24 kHz PCM, at most 9.6 KB per frame. `audio_end` is not sent after an interrupt. |
+| server → page | `no_speech`, `error` `{message}`, `interrupted` | Nothing intelligible; a failure in words safe to show; the interrupt was carried out. |
+
+### What happens to one sentence
+
+1. **Cheap checks first.** A recording shorter than 300 ms, or whose loudest sample is quieter than 1 % of full scale, is
+   `no_speech` without calling Gemini. A recording over `app.speech.max-utterance-seconds` (15) is refused.
+2. **The rate limit is checked before** the paid listening step (`app.voice.requests-per-minute`, shared with typing).
+3. **Listening.** When the page says a sentence has started (`utterance_start`) the server opens a **live** session with
+   Gemini (`GeminiLiveListening`) and forwards the audio as it arrives, so when you stop only the last moment is left to
+   transcribe; at `utterance_end` it asks for the text (about 0.3 s later for a short command). The languages from the voice
+   settings are hints (`languageCodes`) and the names of your lights, rooms and scenes go as `customVocabulary` (up to 100; not the channel names "Main" and "Background", which made the listener rewrite "the background light" as "Background"),
+   so "Desk lamp" is spelled right. If the live session cannot give a text (it could not connect, broke, refused, or took
+   more than 4 s) the whole recording is transcribed with one `generateContent` call on `gemini-3.5-transcribe`, inline as a
+   WAV, with the same hints: you lose time, not the sentence. "Nothing heard" from the live session is trusted and not retried.
+   A session that is cancelled, too quiet, too short or replaced is closed at once. The live text usually comes about 0.3 s after the speech ends but now and then takes several seconds, so after **1.5 s** (`LIVE_PATIENCE_MS`) the recording is sent as well and whichever text arrives first is used.
+4. **Thinking:** the transcript goes through `VoiceService` exactly like a typed sentence (tools, confirmations, log).
+5. **Speaking:** the answer is cut into sentences (`SentenceSplitter`: very short ones are joined, very long ones cut at a
+   comma) and each is sent to `gemini-3.8-flash-tts` with the chosen voice and optional style. The audio is streamed to the
+   page as it arrives, in whole 16-bit samples. The next sentence is fetched while the previous one plays.
+6. **Interrupting** (`interrupt`, or a new `utterance_start`) stops the speech at the next piece of audio and closes the
+   request to Gemini. One turn runs at a time per connection.
+
+If listening fails the page gets an `error` and can try again; if speaking fails the text reply has already been sent.
+
+### The Gemini calls
+
+Plain HTTPS with the key in the `x-goog-api-key` header (never in a URL or a log; error messages are fixed phrases).
+
+- **Listening:** `POST /v1beta/models/gemini-3.5-transcribe:generateContent`, body
+  `{"contents":[{"parts":[{"inlineData":{"mimeType":"audio/wav","data":"…"}}]}],"generationConfig":{"audioTranscriptionConfig":{"languageCodes":["pl-PL","en-US"],"mode":"SMART","customVocabulary":[…]}}}`;
+  the text is read from `candidates[0].content.parts[].audioTranscription.text` (a plain `text` part is accepted too).
+- **Listening, live:** a WebSocket to `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent`
+  (key in the `x-goog-api-key` header). First `{"setup":{"model":"models/gemini-3.5-transcribe-live","generationConfig":{"responseModalities":["TEXT"]},"inputAudioTranscription":{"languageCodes":["pl-PL","en-US"],"mode":"SMART","customVocabulary":[…]}}}`,
+  answered by `setupComplete`; then `{"realtimeInput":{"audio":{"data":"…","mimeType":"audio/pcm;rate=16000"}}}` for each piece of audio, and
+  `{"realtimeInput":{"audioStreamEnd":true}}` at the end. The text comes in `serverContent.inputTranscription.text` (pieces are joined;
+  `interimInputTranscription` is ignored) and a `serverContent.generationComplete` **after the end was sent** means it is done. The service
+  sends its JSON as **binary** frames, which the first version did not read (it heard nothing). Audio must arrive at about the pace
+  it was spoken: sent in one burst it came back garbled, so a backlog (audio that arrived while the session was being set up, about
+  0.35 s) is caught up at 4 times the speed of speech, which gave the same text. A session lasts at most 10 minutes; one
+  sentence uses it for seconds.
+- **Speaking:** `POST /v1beta/interactions`, body
+  `{"model":"gemini-3.8-flash-tts","input":[{"type":"user_input","content":[{"type":"text","text":"…","annotations":[{"type":"speech_metadata","style":"…"}]}]}],"response_format":{"type":"audio"},"generation_config":{"speech_config":[{"voice":"Kore"}]},"stream":true}`;
+  the stream carries `step.delta` events whose `delta` is `{"mime_type":"audio/l16","data":"…"}`: base64 raw 24 kHz mono PCM, little-endian. With
+  `app.speech.tts-streaming=false` each sentence is fetched whole (`mime_type: audio/l16`) and sliced.
+
+**Checked against the real service (2026-10-27)** with one English sentence each way: the transcription model accepts the
+recording inline (no Files API needed) and the streamed speech has the shape above. The first version read the wrong
+fields for both and so heard nothing, which the tests missed because their fakes followed the same wrong guess; they now
+use the real shapes. Live listening was checked against the real service on 2026-10-29 with synthetic Polish and English clips streamed at the
+pace of speech (a pause of 1.8 s inside a sentence came back as one text), with the Java client and through the real
+microphone WebSocket: the text matched the whole-recording one on every clip and arrived about 0.3 s after the audio ended
+(1.2 s for a long four-part command), against 1.5 to 1.9 s before. Setting the languages and names mattered: without them
+one clip came back as "Włącz" for "Wyłącz". Not checked: Polish accuracy with a real voice (set `app.speech.compare-transcripts=true`
+for a few days and read the log), and the non-streaming speech format. A refusal shows up as the
+`error` message "The speech service refused the request (400)", with Google's own explanation in the backend log. When the
+assistant says "I didn't catch that", the backend log says why: too short or too quiet (with the measured length and
+level), or an empty transcription.
+
+### Privacy and cost
+
+- **Audio leaves your home**: the recording goes to Google to be transcribed, and the answers' text goes to Google to be
+  spoken. Nothing is stored by this application except the transcript in `voice_turn`.
+- **Use a paid Gemini key.** According to Google's pricing page, requests on the **free tier may be used to improve
+  Google's products; on the paid tier they are not.** A microphone in a home should not be on the free tier.
+- Prices (Google's page, through 2026): `gemini-3.8-flash-tts` audio output $9 per million tokens (about $0.00225 per
+  10 s of speech), `gemini-3.5-transcribe` about $2 per million audio tokens (32 tokens per second of audio, so about
+  $0.004 per minute) per a third-party summary. **Prices rise on January 1, 2027** (TTS output to $18 per million). A
+  short command costs a fraction of a cent; check the current prices before relying on this.
+
+### Limits and known gaps
+
+- The wake word is not built: the microphone opens when you tap, or stays open in the page's hands-free mode.
+- Claude's answer is generated whole before it is spoken; streaming it into the speech would cut about a second.
+- Gemini TTS reads the text verbatim, so the system prompt's "no markdown, write numbers the way they are said" rule
+  matters.
+- The sentence detector lives in the browser. Echo cancellation is the browser's own, so on laptop speakers it is
+  decent but not perfect; a USB speakerphone is still the plan for the wall.

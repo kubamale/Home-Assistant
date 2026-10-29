@@ -67,7 +67,7 @@ public class CalendarService {
                 cached.lastError());
     }
 
-    @Scheduled(initialDelayString = "PT8S", fixedDelayString = "PT5M")
+    @Scheduled(initialDelayString = "${app.calendar.initial-delay:PT8S}", fixedDelayString = "PT5M")
     public void scheduledRefresh() {
         refresh();
     }

@@ -65,7 +65,7 @@ public class WeatherService {
         return new Snapshot(true, cached.data(), cached.fetchedAt(), stale, cached.lastError());
     }
 
-    @Scheduled(initialDelayString = "PT5S", fixedDelayString = "${app.weather.refresh-interval:15m}")
+    @Scheduled(initialDelayString = "${app.weather.initial-delay:PT5S}", fixedDelayString = "${app.weather.refresh-interval:15m}")
     public void scheduledRefresh() {
         refresh();
     }

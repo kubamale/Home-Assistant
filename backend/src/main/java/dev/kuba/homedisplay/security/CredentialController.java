@@ -10,11 +10,13 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
+import dev.kuba.homedisplay.rooms.RoomService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -25,13 +27,19 @@ import jakarta.validation.constraints.Size;
 public class CredentialController {
 
     private final CredentialService credentials;
+    private final RoomService rooms;
 
-    public CredentialController(CredentialService credentials) {
+    public CredentialController(CredentialService credentials, RoomService rooms) {
         this.credentials = credentials;
+        this.rooms = rooms;
     }
 
     public record CredentialView(String id, String kind, String label, Instant createdAt, Instant lastUsedAt,
-            boolean current) {
+            boolean current, Long roomId) {
+    }
+
+    /** The room a display is in; null takes it out of its room. */
+    public record RoomRequest(Long roomId) {
     }
 
     public record AgentTokenRequest(@NotBlank @Size(max = 60) String label) {
@@ -45,8 +53,20 @@ public class CredentialController {
         String currentId = ((CredentialPrincipal) authentication.getPrincipal()).credentialId();
         return credentials.list().stream()
                 .map(c -> new CredentialView(c.id(), c.kind().dbValue(), c.label(), c.createdAt(), c.lastUsedAt(),
-                        c.id().equals(currentId)))
+                        c.id().equals(currentId), c.roomId()))
                 .toList();
+    }
+
+    /** Says which room a display is in. Only displays have one: a phone goes wherever its owner does. */
+    @PutMapping("/{id}/room")
+    public ResponseEntity<Void> setRoom(@PathVariable String id, @RequestBody RoomRequest request) {
+        if (request.roomId() != null && rooms.list().stream().noneMatch(r -> r.id() == request.roomId())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No such room");
+        }
+        if (!credentials.setRoom(id, request.roomId())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No such display");
+        }
+        return ResponseEntity.noContent().build();
     }
 
     @DeleteMapping("/{id}")

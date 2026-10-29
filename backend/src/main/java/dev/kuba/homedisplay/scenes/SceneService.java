@@ -170,14 +170,26 @@ public class SceneService {
             throw DeviceException.offline();
         }
         Map<String, HomeDevice> byId = byId(deviceService.snapshot().devices());
-        List<SceneAction> actions = scene.isAllOff() ? allOff(byId) : scenes.actions(id);
+        return run(scene.isAllOff() ? allOff(byId) : scenes.actions(id), byId);
+    }
 
+    /**
+     * Applies loose actions the way a scene would (the voice assistant uses this to set several lights at
+     * once): in parallel across devices, in order within one, with every failure reported.
+     */
+    public ApplyResult applyActions(List<SceneAction> actions) {
+        if (!adapter.online()) {
+            throw DeviceException.offline();
+        }
+        return run(actions, byId(deviceService.snapshot().devices()));
+    }
+
+    private ApplyResult run(List<SceneAction> actions, Map<String, HomeDevice> byId) {
         Map<String, List<SceneAction>> perDevice = new LinkedHashMap<>();
         for (SceneAction action : actions) {
             perDevice.computeIfAbsent(action.deviceId(), k -> new ArrayList<>()).add(action);
         }
         List<Failure> failed = new ArrayList<>();
-        int applied = 0;
         try (ExecutorService pool = Executors.newVirtualThreadPerTaskExecutor()) {
             List<Future<List<Failure>>> runs = new ArrayList<>();
             for (List<SceneAction> group : perDevice.values()) {
@@ -191,8 +203,7 @@ public class SceneService {
                 }
             }
         }
-        applied = actions.size() - failed.size();
-        return new ApplyResult(applied, failed);
+        return new ApplyResult(actions.size() - failed.size(), failed);
     }
 
     /** Switches every channel of every present, reachable device off. */
