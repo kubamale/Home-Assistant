@@ -131,6 +131,34 @@ class VoiceTest extends IntegrationTest {
         throw new AssertionError("no display was paired");
     }
 
+    // ---- rooms people may not use ----
+
+    @Test
+    void theAssistantOnlyKnowsTheLightsThePersonMayControl() throws Exception {
+        Cookie admin = loginAsUser();
+        long anna = createUser(admin, "Anna", "anna-password");
+        Cookie annaCookie = loginAs("Anna", "anna-password");
+        String created = mvc.perform(post("/api/rooms").cookie(admin).contentType(JSON).content("{\"name\":\"Bedroom\"}"))
+                .andReturn().getResponse().getContentAsString();
+        long bedroom = json.readTree(created).path("id").asLong();
+        mvc.perform(patch("/api/devices/fake-lamp").cookie(admin).contentType(JSON).content("{\"roomId\":" + bedroom + "}"))
+                .andExpect(status().isNoContent());
+
+        // a view-only room: she can see it but the assistant is not given its lights, so it cannot switch them
+        mvc.perform(put("/api/rooms/" + bedroom + "/access").cookie(admin).contentType(JSON)
+                .content("{\"access\":\"view\",\"members\":[]}")).andExpect(status().isNoContent());
+        script(() -> call("set_lights", "{\"changes\":[{\"light\":\"" + refOf(BAR_MAIN) + "\",\"on\":true}]}"), "Done.");
+        ask(annaCookie, "light bar on").andExpect(status().isOk());
+        assertTrue(model.system.contains("Light bar"), model.system);
+        assertTrue(!model.system.contains("Desk lamp"), "a light she may not control reached the assistant:\n" + model.system);
+        assertTrue(!model.system.contains("Bedroom"), model.system);
+
+        // the admin's assistant knows everything
+        ask(admin, "anything").andExpect(status().isOk());
+        assertTrue(model.system.contains("Desk lamp"), model.system);
+        assertTrue(anna > 0);
+    }
+
     // ---- turning a sentence into actions ----
 
     @Test

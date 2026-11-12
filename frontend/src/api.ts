@@ -12,6 +12,7 @@ import type {
   PinItem,
   Place,
   Room,
+  RoomAccess,
   Scene,
   SceneActionPayload,
   SessionInfo,
@@ -107,8 +108,9 @@ export const api = {
   applyScene: (id: number) => request<ApplyResult>('POST', `/api/scenes/${id}/apply`),
 
   // rooms, device organisation and quick access
-  createRoom: (name: string) => request<Room>('POST', '/api/rooms', { name }),
-  renameRoom: (id: number, name: string) => request<Room>('PATCH', `/api/rooms/${id}`, { name }),
+  createRoom: (name: string) => request<Pick<Room, 'id' | 'name' | 'position'>>('POST', '/api/rooms', { name }),
+  renameRoom: (id: number, name: string) => request<Pick<Room, 'id' | 'name' | 'position'>>('PATCH', `/api/rooms/${id}`, { name }),
+  setRoomAccess: (id: number, access: RoomAccess, members: number[]) => request<void>('PUT', `/api/rooms/${id}/access`, { access, members }),
   deleteRoom: (id: number) => request<void>('DELETE', `/api/rooms/${id}`),
   reorderRooms: (roomIds: number[]) => request<void>('PUT', '/api/rooms/order', { roomIds }),
   updateDevice: (id: string, change: { name?: string; roomId?: number | null }) =>

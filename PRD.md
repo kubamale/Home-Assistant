@@ -167,6 +167,8 @@ IDs are used in the task list and tests.
 | R11 | When the agent is offline the stored structure is still shown (it comes from the database) with every device unavailable, including right after a backend restart before the agent has reconnected. |
 | R12 | Only the user credential can change rooms, assignments, names and pins; the display can read them and toggle devices (A3). |
 
+| R13 | **Who may use a room (added 2026-11-12).** Each room is *everyone* (the default: all see and control), *everyone can look* (all see, only the people the admin picks control) or *only some people* (hidden from everyone else). The admin always can; a display acts as its owner. It applies to the app, scenes (a shared scene only changes the lights the person controls, and says how many it left out), favourites and the assistant, and is set by the admin on the room's menu. |
+
 Out of scope for R: a "turn off the room" button. It is a natural next step and needs no change to this model.
 
 ### 4.12 Device channels and controls (D)

@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import dev.kuba.homedisplay.rooms.RoomAccess;
 import dev.kuba.homedisplay.rooms.RoomRepository;
 import dev.kuba.homedisplay.scenes.SceneRepository;
 import dev.kuba.homedisplay.stream.ChangePublisher;
@@ -28,29 +29,55 @@ public class DeviceService {
     private final DeviceAdapter adapter;
     private final DeviceRepository repository;
     private final RoomRepository rooms;
+    private final RoomAccess roomAccess;
     private final SceneRepository scenes;
     private final ChangePublisher changes;
 
     public DeviceService(DeviceAdapter adapter, DeviceRepository repository, RoomRepository rooms,
-            SceneRepository scenes, ChangePublisher changes) {
+            RoomAccess roomAccess, SceneRepository scenes, ChangePublisher changes) {
         this.adapter = adapter;
         this.repository = repository;
         this.rooms = rooms;
+        this.roomAccess = roomAccess;
         this.scenes = scenes;
         this.changes = changes;
     }
 
-    /** The devices without anyone's pins: for code that only needs the lights, such as scenes and the assistant. */
+    /**
+     * Every device without anyone's pins and without any access rule. Only for code that applies the rules itself
+     * (scenes check each action); anything that shows devices to a person uses {@link #snapshot(Viewer)}.
+     */
     public Snapshot snapshot() {
-        return snapshot(null);
+        return build(null);
     }
 
     /**
-     * Stored devices merged with live state, with the pins of this person ({@code null}: none). A stored device the
-     * agent does not list shows as unreachable.
+     * The devices this person may see, with their pins and whether they may control each one (a room can be view only
+     * for them). A device in a private room they are not in is not listed at all.
      */
     @Transactional(readOnly = true)
-    public Snapshot snapshot(Long userId) {
+    public Snapshot snapshot(Viewer viewer) {
+        RoomAccess.For access = roomAccess.of(viewer);
+        Snapshot all = build(viewer.userId());
+        List<HomeDevice> visible = all.devices().stream().filter(d -> access.canSee(d.roomId()))
+                .map(d -> d.withControllable(access.canControl(d.roomId()))).toList();
+        return new Snapshot(visible, all.agentOnline());
+    }
+
+    /** What this person may do with one device: it does not exist for them if they cannot see it, 403 if they cannot control it. */
+    public void requireControl(Viewer viewer, String deviceId) {
+        StoredDevice device = repository.findById(deviceId).orElseThrow(() -> DeviceException.notFound(deviceId));
+        RoomAccess.For access = roomAccess.of(viewer);
+        if (!access.canSee(device.roomId())) {
+            throw DeviceException.notFound(deviceId);
+        }
+        if (!access.canControl(device.roomId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You can only look at the devices in this room");
+        }
+    }
+
+    /** Stored devices merged with live state, with the pins of this person ({@code null}: none). */
+    private Snapshot build(Long userId) {
         Map<String, Device> live = adapter.devices().stream()
                 .collect(Collectors.toMap(Device::id, Function.identity(), (a, b) -> a));
         List<QuickAccessItem> pinned = userId == null ? List.of() : repository.quickAccess(userId);
@@ -76,13 +103,15 @@ public class DeviceService {
     }
 
     /** Switches every channel of the device and returns it as the API shows it. */
-    public HomeDevice setPower(String id, boolean on) {
+    public HomeDevice setPower(Viewer viewer, String id, boolean on) {
+        requireControl(viewer, id);
         adapter.setPower(id, on);
-        return find(id);
+        return find(viewer, id);
     }
 
     /** Changes one channel after checking the change against what the channel supports. */
-    public HomeDevice setChannel(String id, String channelId, ChannelChange change) {
+    public HomeDevice setChannel(Viewer viewer, String id, String channelId, ChannelChange change) {
+        requireControl(viewer, id);
         StoredDevice device = repository.findById(id).orElseThrow(() -> DeviceException.notFound(id));
         ChannelInfo channel = device.channel(channelId);
         if (channel == null) {
@@ -90,11 +119,11 @@ public class DeviceService {
         }
         change.validate(channel);
         adapter.setChannel(id, channelId, change);
-        return find(id);
+        return find(viewer, id);
     }
 
-    private HomeDevice find(String id) {
-        return snapshot().devices().stream().filter(d -> d.id().equals(id)).findFirst()
+    private HomeDevice find(Viewer viewer, String id) {
+        return snapshot(viewer).devices().stream().filter(d -> d.id().equals(id)).findFirst()
                 .orElseThrow(() -> DeviceException.notFound(id));
     }
 
@@ -147,6 +176,7 @@ public class DeviceService {
                 }
                 continue;
             }
+            requireControl(viewer, item.deviceId()); // a favourite is something you can switch
             StoredDevice device = repository.findById(item.deviceId())
                     .orElseThrow(() -> DeviceException.notFound(item.deviceId()));
             if (device.channel(item.channel()) == null) {

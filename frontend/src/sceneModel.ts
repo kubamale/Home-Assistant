@@ -127,4 +127,4 @@ export function addableLights(devices: Device[], inScene: ActionDraft[]): { devi
 }
 
 export const sceneSubtitle = (scene: Scene) =>
-  scene.kind === 'all_off' ? 'Every light' : scene.actions.length === 1 ? '1 light' : `${scene.actions.length} lights`
+  scene.kind === 'all_off' ? 'Every light you control' : scene.actions.length === 1 ? '1 light' : `${scene.actions.length} lights`

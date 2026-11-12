@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, ApiError } from '../api'
-import type { ChannelChange, PinItem, SceneActionPayload, SessionInfo, VoiceSettings } from '../types'
+import type { ChannelChange, PinItem, RoomAccess, SceneActionPayload, SessionInfo, VoiceSettings } from '../types'
 
 // Data is refreshed by server events (see ConnectionProvider). Queries keep their last good data
 // when a refetch fails, which is what the "reconnecting" screens rely on.
@@ -108,6 +108,8 @@ function useHomeMutation<V, R>(fn: (v: V) => Promise<R>) {
 export const useCreateRoom = () => useHomeMutation((name: string) => api.createRoom(name))
 export const useRenameRoom = () => useHomeMutation((v: { id: number; name: string }) => api.renameRoom(v.id, v.name))
 export const useDeleteRoom = () => useHomeMutation((id: number) => api.deleteRoom(id))
+export const useSetRoomAccess = () =>
+  useHomeMutation((v: { id: number; access: RoomAccess; members: number[] }) => api.setRoomAccess(v.id, v.access, v.members))
 export const useReorderRooms = () => useHomeMutation((ids: number[]) => api.reorderRooms(ids))
 export const useUpdateDevice = () =>
   useHomeMutation((v: { id: string; name?: string; roomId?: number | null }) =>

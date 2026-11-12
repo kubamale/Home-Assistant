@@ -139,6 +139,8 @@ export interface Device {
   updatedAt: string | null
   lastSeenAt: string
   channels: Channel[]
+  /** False when the device is in a room that is view only for this person: they see it but cannot change it. */
+  controllable: boolean
 }
 
 /** A quick access slot: a light (device and channel) or a scene. */
@@ -190,6 +192,8 @@ export interface SceneFailure {
 export interface ApplyResult {
   applied: number
   failed: SceneFailure[]
+  /** Lights left out because they are in a room the person may not control. */
+  skipped?: number
 }
 
 /** An action as sent to the server: only the settings that are included. */
@@ -204,10 +208,18 @@ export interface DevicesSnapshot {
   agentOnline: boolean
 }
 
+/** Who may use a room: everyone, everyone to look and some people to control, or only some people. */
+export type RoomAccess = 'open' | 'view' | 'private'
+
 export interface Room {
   id: number
   name: string
   position: number
+  access: RoomAccess
+  /** Whether the person asking may control the devices in it (false where it is view only for them). */
+  canControl: boolean
+  /** The people it names. Only the admin is told; empty for everyone else. */
+  members: number[]
 }
 
 export interface CredentialView {

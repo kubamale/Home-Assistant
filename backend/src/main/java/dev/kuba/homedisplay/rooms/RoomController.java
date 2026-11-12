@@ -4,6 +4,7 @@ import java.util.List;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -15,6 +16,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
+import dev.kuba.homedisplay.security.CredentialPrincipal;
+import dev.kuba.homedisplay.users.Viewer;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -36,12 +39,22 @@ public class RoomController {
     public record OrderRequest(@NotNull List<@NotNull Long> roomIds) {
     }
 
-    public record RoomList(List<Room> rooms) {
+    public record RoomList(List<RoomService.RoomView> rooms) {
+    }
+
+    /** Who may use a room. {@code members} is ignored for an open room. */
+    public record AccessRequest(@NotNull String access, List<Long> members) {
     }
 
     @GetMapping
-    public RoomList list() {
-        return new RoomList(rooms.list());
+    public RoomList list(Authentication authentication) {
+        return new RoomList(rooms.views(Viewer.of((CredentialPrincipal) authentication.getPrincipal())));
+    }
+
+    @PutMapping("/{id}/access")
+    public ResponseEntity<Void> setAccess(@PathVariable long id, @Valid @RequestBody AccessRequest request) {
+        rooms.setAccess(id, request.access(), request.members());
+        return ResponseEntity.noContent().build();
     }
 
     @PostMapping

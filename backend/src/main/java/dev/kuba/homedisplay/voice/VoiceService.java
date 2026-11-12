@@ -20,6 +20,7 @@ import org.springframework.stereotype.Service;
 
 import dev.kuba.homedisplay.config.AppProperties;
 import dev.kuba.homedisplay.devices.DeviceService;
+import dev.kuba.homedisplay.devices.HomeDevice;
 import dev.kuba.homedisplay.rooms.RoomService;
 import dev.kuba.homedisplay.scenes.SceneService;
 import dev.kuba.homedisplay.users.Viewer;
@@ -146,11 +147,12 @@ public class VoiceService {
      * A hundred is as many as it uses well.
      */
     public List<String> vocabulary(CredentialPrincipal who) {
+        Viewer viewer = Viewer.of(who);
         java.util.LinkedHashSet<String> names = new java.util.LinkedHashSet<>();
-        rooms.list().forEach(room -> names.add(room.name()));
+        rooms.list(viewer).forEach(room -> names.add(room.name()));
         // Not the channel names ("Main", "Background"): they are everyday words, and as hints they make the listener turn
         // "the background light" into just "Background".
-        devices.snapshot().devices().forEach(device -> names.add(device.name()));
+        devices.snapshot(viewer).devices().forEach(device -> names.add(device.name()));
         scenes.list(Viewer.of(who)).forEach(scene -> names.add(scene.name()));
         return names.stream().filter(n -> !n.isBlank()).limit(100).toList();
     }
@@ -274,7 +276,10 @@ public class VoiceService {
     }
 
     private Conversation begin(CredentialPrincipal who) {
-        HomeCatalog catalog = new HomeCatalog(devices.snapshot().devices(), rooms.list(), scenes.list(Viewer.of(who)));
+        Viewer viewer = Viewer.of(who);
+        // the assistant only knows the lights this person may switch (and the rooms they are in), so it cannot be used around the rules
+        List<HomeDevice> controllable = devices.snapshot(viewer).devices().stream().filter(HomeDevice::controllable).toList();
+        HomeCatalog catalog = new HomeCatalog(controllable, rooms.list(viewer), scenes.list(viewer));
         AgentSession session = model.start(INSTRUCTIONS + catalog.prompt(), tools.specs(who.kind()));
         Conversation conversation = new Conversation(who.credentialId(), session, catalog, clock.instant());
         conversations.put(conversation.id, conversation);

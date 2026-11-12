@@ -1,21 +1,27 @@
 import { useState } from 'react'
 import { useDeleteRoom, useRenameRoom, useReorderRooms } from '../hooks/data'
-import { moveItem } from '../homeModel'
+import { moveItem, roomBadge } from '../homeModel'
 import type { Room } from '../types'
+import { RoomAccessEditor } from './RoomAccessEditor'
 import { Sheet } from './Sheet'
 
-/** What the admin can do with a room: rename it, move it in the list, delete it. */
+/** What the admin can do with a room: rename it, say who may use it, move it in the list, delete it. */
 export function RoomMenu({ room, rooms, onClose }: { room: Room; rooms: Room[]; onClose: () => void }) {
   const rename = useRenameRoom()
   const remove = useDeleteRoom()
   const reorder = useReorderRooms()
   const [name, setName] = useState(room.name)
   const [confirming, setConfirming] = useState(false)
+  const [sharing, setSharing] = useState(false)
   const ids = rooms.map((r) => r.id)
   const place = ids.indexOf(room.id)
 
   return (
     <Sheet title={room.name} onClose={onClose}>
+      {sharing ? (
+        <RoomAccessEditor room={room} onDone={() => setSharing(false)} />
+      ) : (
+      <>
       <form
         className="inline-edit"
         onSubmit={(e) => {
@@ -29,6 +35,12 @@ export function RoomMenu({ room, rooms, onClose }: { room: Room; rooms: Room[]; 
         </button>
       </form>
       <ul className="menu-list">
+        <li>
+          <button type="button" className="menu-row" onClick={() => setSharing(true)}>
+            <span>Who can use it</span>
+            <span className="muted menu-value">{roomBadge(room, true) ?? 'Everyone'} ›</span>
+          </button>
+        </li>
         <li>
           <button type="button" className="menu-row" disabled={place <= 0 || reorder.isPending} onClick={() => reorder.mutate(moveItem(ids, place, -1), { onSuccess: onClose })}>
             Move up
@@ -60,6 +72,8 @@ export function RoomMenu({ room, rooms, onClose }: { room: Room; rooms: Room[]; 
         </li>
       </ul>
       {(rename.error ?? remove.error ?? reorder.error) && <p className="error small">{(rename.error ?? remove.error ?? reorder.error)?.message}</p>}
+      </>
+      )}
     </Sheet>
   )
 }

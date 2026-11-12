@@ -1,6 +1,6 @@
 import { useSetPower } from '../hooks/data'
 import { useNow } from '../hooks/useClock'
-import { availabilityNote, isUnavailable } from '../homeModel'
+import { availabilityNote, isLocked, isUnavailable } from '../homeModel'
 import type { Device } from '../types'
 import { StarIcon } from './Icons'
 
@@ -46,7 +46,7 @@ export function DeviceRow({ device, agentDown, offline, onOpen }: Props) {
           aria-checked={device.power}
           aria-label={`${device.name} ${device.power ? 'on' : 'off'}`}
           className={device.power ? 'switch on' : 'switch'}
-          disabled={unavailable || offline || setPower.isPending}
+          disabled={unavailable || isLocked(device) || offline || setPower.isPending}
           onClick={() => setPower.mutate({ id: device.id, on: !device.power })}
         >
           <span className="knob" />

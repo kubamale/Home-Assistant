@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useDevices, useForgetDevice, useIsAdmin, useRooms, useScenes, useSession, useSetQuickAccess, useUpdateDevice } from '../hooks/data'
 import { useNow } from '../hooks/useClock'
-import { availabilityNote, isPinned, isUnavailable, pinnedItems, togglePin, toPinItems } from '../homeModel'
+import { availabilityNote, isLocked, isPinned, isUnavailable, pinnedItems, togglePin, toPinItems } from '../homeModel'
 import { ChannelControls } from './ChannelControls'
 import { Sheet } from './Sheet'
 
@@ -60,9 +60,9 @@ export function DevicePanel({ deviceId, onClose, onFavourites }: { deviceId: str
           key={channel.id}
           device={device}
           channel={channel}
-          unavailable={unavailable}
+          unavailable={unavailable || isLocked(device)}
           showTitle={device.channels.length > 1}
-          favourite={person ? { on: isPinned(items, { deviceId: device.id, channel: channel.id }), onToggle: () => toggleStar(channel.id), disabled: pin.isPending } : undefined}
+          favourite={person ? { on: isPinned(items, { deviceId: device.id, channel: channel.id }), onToggle: () => toggleStar(channel.id), disabled: pin.isPending || isLocked(device) } : undefined}
         />
       ))}
       {pin.error && <p className="error small">{pin.error.message}</p>}

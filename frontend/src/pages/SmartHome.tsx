@@ -14,7 +14,7 @@ import { ConnectionNotice } from '../components/StatusBar'
 import { useConnection } from '../connection'
 import { useCreateRoom, useDevices, useIsAdmin, useRooms } from '../hooks/data'
 import { groupDevices } from '../homeModel'
-import type { Room, Scene } from '../types'
+import type { Scene } from '../types'
 
 /**
  * The Home tab. There is no edit mode: favourites and scenes have their own buttons, a device opens its own panel (where it
@@ -31,10 +31,11 @@ export function SmartHome() {
   const [favourites, setFavourites] = useState(false)
   const [sceneMenu, setSceneMenu] = useState<Scene | null>(null)
   const [editor, setEditor] = useState<Scene | 'new' | null>(null)
-  const [roomMenu, setRoomMenu] = useState<Room | null>(null)
+  const [roomMenuId, setRoomMenuId] = useState<number | null>(null)
 
   const devices = snapshot?.devices ?? []
   const rooms = roomList ?? []
+  const roomMenu = rooms.find((r) => r.id === roomMenuId) ?? null // the live room, so a saved change shows at once (and a deleted room closes its menu)
   const agentDown = snapshot ? !snapshot.agentOnline : false
   const offline = connection === 'reconnecting'
   const grouped = groupDevices(devices, rooms)
@@ -85,7 +86,7 @@ export function SmartHome() {
         )}
 
         {grouped.rooms.map((group) => (
-          <RoomSection key={group.room.id} group={group} agentDown={agentDown} offline={offline} onOpen={setPanel} onMenu={admin ? () => setRoomMenu(group.room) : undefined} />
+          <RoomSection key={group.room.id} group={group} agentDown={agentDown} offline={offline} onOpen={setPanel} onMenu={admin ? () => setRoomMenuId(group.room.id) : undefined} />
         ))}
 
         {admin &&
@@ -132,7 +133,7 @@ export function SmartHome() {
         />
       )}
       {editor && <SceneEditor scene={editor === 'new' ? null : editor} onClose={() => setEditor(null)} />}
-      {roomMenu && <RoomMenu room={roomMenu} rooms={rooms} onClose={() => setRoomMenu(null)} />}
+      {roomMenu && <RoomMenu room={roomMenu} rooms={rooms} onClose={() => setRoomMenuId(null)} />}
     </>
   )
 }

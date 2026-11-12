@@ -27,6 +27,7 @@ import dev.kuba.homedisplay.scenes.SceneViews.ActionView;
 import dev.kuba.homedisplay.scenes.SceneViews.ApplyResult;
 import dev.kuba.homedisplay.scenes.SceneViews.Failure;
 import dev.kuba.homedisplay.scenes.SceneViews.SceneView;
+import dev.kuba.homedisplay.rooms.RoomAccess;
 import dev.kuba.homedisplay.stream.ChangePublisher;
 import dev.kuba.homedisplay.users.Viewer;
 
@@ -41,21 +42,23 @@ public class SceneService {
     private final DeviceRepository devices;
     private final DeviceService deviceService;
     private final DeviceAdapter adapter;
+    private final RoomAccess roomAccess;
     private final ChangePublisher changes;
 
     public SceneService(SceneRepository scenes, DeviceRepository devices, DeviceService deviceService,
-            DeviceAdapter adapter, ChangePublisher changes) {
+            DeviceAdapter adapter, RoomAccess roomAccess, ChangePublisher changes) {
         this.scenes = scenes;
         this.devices = devices;
         this.deviceService = deviceService;
         this.adapter = adapter;
+        this.roomAccess = roomAccess;
         this.changes = changes;
     }
 
     /** The scenes this person sees: the shared ones and their own, with their own pins. */
     @Transactional(readOnly = true)
     public List<SceneView> list(Viewer viewer) {
-        Map<String, HomeDevice> byId = byId(deviceService.snapshot().devices());
+        Map<String, HomeDevice> byId = byId(deviceService.snapshot(viewer).devices());
         List<QuickAccessItem> pinned = devices.quickAccess(viewer.userId());
         Map<Long, List<SceneAction>> actions = scenes.actionsByScene();
         return scenes.findVisible(viewer.userId()).stream()
@@ -65,7 +68,8 @@ public class SceneService {
     private SceneView view(Viewer viewer, Scene scene, List<SceneAction> actions, Map<String, HomeDevice> byId,
             List<QuickAccessItem> pinned) {
         int slot = pinned.indexOf(QuickAccessItem.scene(scene.id()));
-        List<ActionView> views = actions.stream().map(a -> {
+        // a light in a room the person may not see is not shown (the scene still has it, and applies it for those who may)
+        List<ActionView> views = actions.stream().filter(a -> byId.containsKey(a.deviceId())).map(a -> {
             HomeDevice device = byId.get(a.deviceId());
             HomeChannel channel = device == null ? null
                     : device.channels().stream().filter(c -> c.id().equals(a.channel())).findFirst().orElse(null);
@@ -83,7 +87,7 @@ public class SceneService {
         if (shared && !viewer.admin()) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the admin can make a scene for everyone");
         }
-        validate(actions);
+        validate(viewer, actions);
         rejectDuplicateName(name.trim(), -1);
         Scene scene = scenes.insert(name.trim(), shared ? null : viewer.userId());
         scenes.replaceActions(scene.id(), actions);
@@ -97,13 +101,14 @@ public class SceneService {
         if (lights.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Pick at least one light");
         }
-        Map<String, HomeDevice> byId = byId(deviceService.snapshot().devices());
+        Map<String, HomeDevice> byId = byId(deviceService.snapshot(viewer).devices());
         List<SceneAction> actions = new ArrayList<>();
         for (LightRef light : lights) {
             HomeDevice device = byId.get(light.deviceId());
             if (device == null) {
                 throw DeviceException.notFound(light.deviceId());
             }
+            deviceService.requireControl(viewer, light.deviceId());
             HomeChannel channel = device.channels().stream().filter(c -> c.id().equals(light.channel())).findFirst()
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such channel: " + light.channel()));
             actions.add(new SceneAction(light.deviceId(), light.channel(), currentSettings(channel)));
@@ -136,8 +141,17 @@ public class SceneService {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The built-in scene has no actions to edit");
             }
         } else {
-            validate(actions);
-            scenes.replaceActions(id, actions);
+            validate(viewer, actions);
+            // lights the person cannot see were not sent back to them, so keep them in the scene
+            List<SceneAction> all = new ArrayList<>(actions);
+            RoomAccess.For access = roomAccess.of(viewer);
+            for (SceneAction old : scenes.actions(id)) {
+                var device = devices.findById(old.deviceId());
+                if (device.isPresent() && !access.canSee(device.get().roomId())) {
+                    all.add(old);
+                }
+            }
+            scenes.replaceActions(id, all);
         }
         scenes.rename(id, name.trim());
         changes.publish(ChangePublisher.HOME);
@@ -184,18 +198,39 @@ public class SceneService {
             throw DeviceException.offline();
         }
         Map<String, HomeDevice> byId = byId(deviceService.snapshot().devices());
-        return run(scene.isAllOff() ? allOff(byId) : scenes.actions(id), byId);
+        RoomAccess.For access = roomAccess.of(viewer);
+        // All off means every light the person may switch, so lights in rooms they may not control are not "skipped"
+        Map<String, HomeDevice> theirs = new LinkedHashMap<>(byId);
+        theirs.values().removeIf(d -> !access.canControl(d.roomId()));
+        return runAllowed(viewer, scene.isAllOff() ? allOff(theirs) : scenes.actions(id), byId);
     }
 
     /**
      * Applies loose actions the way a scene would (the voice assistant uses this to set several lights at
      * once): in parallel across devices, in order within one, with every failure reported.
      */
-    public ApplyResult applyActions(List<SceneAction> actions) {
+    public ApplyResult applyActions(Viewer viewer, List<SceneAction> actions) {
         if (!adapter.online()) {
             throw DeviceException.offline();
         }
-        return run(actions, byId(deviceService.snapshot().devices()));
+        return runAllowed(viewer, actions, byId(deviceService.snapshot().devices()));
+    }
+
+    /**
+     * Runs the actions the person may run. A light in a room they may not control is left out and counted, so a shared scene
+     * (or All off) pressed by someone only changes what is theirs to change.
+     */
+    private ApplyResult runAllowed(Viewer viewer, List<SceneAction> actions, Map<String, HomeDevice> byId) {
+        RoomAccess.For access = roomAccess.of(viewer);
+        List<SceneAction> allowed = new ArrayList<>();
+        for (SceneAction action : actions) {
+            HomeDevice device = byId.get(action.deviceId());
+            if (device == null || access.canControl(device.roomId())) {
+                allowed.add(action);
+            }
+        }
+        ApplyResult result = run(allowed, byId);
+        return new ApplyResult(result.applied(), result.failed(), actions.size() - allowed.size());
     }
 
     private ApplyResult run(List<SceneAction> actions, Map<String, HomeDevice> byId) {
@@ -272,9 +307,10 @@ public class SceneService {
         return settings;
     }
 
-    private void validate(List<SceneAction> actions) {
+    private void validate(Viewer viewer, List<SceneAction> actions) {
         Set<String> seen = new HashSet<>();
         for (SceneAction action : actions) {
+            deviceService.requireControl(viewer, action.deviceId()); // only lights the person can switch go in their scene
             var device = devices.findById(action.deviceId()).orElseThrow(() -> DeviceException.notFound(action.deviceId()));
             var channel = device.channel(action.channel());
             if (channel == null) {

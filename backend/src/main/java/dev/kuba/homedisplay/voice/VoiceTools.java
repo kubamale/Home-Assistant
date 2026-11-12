@@ -147,7 +147,7 @@ class VoiceTools {
             return switch (call.name()) {
                 case SET_LIGHTS -> setLights(call, input, turn);
                 case APPLY_SCENE -> applyScene(call, input, turn);
-                case GET_LIGHTS -> ok(call, getLights(turn.catalog));
+                case GET_LIGHTS -> ok(call, getLights(turn.viewer, turn.catalog));
                 case GET_WEATHER -> weatherResult(call);
                 case GET_CALENDAR -> ok(call, getCalendar(turn));
                 case GET_TASKS -> ok(call, getTasks(turn));
@@ -189,7 +189,7 @@ class VoiceTools {
         ObjectNode result = json.createObjectNode();
         int appliedCount = 0;
         if (!actions.isEmpty()) {
-            ApplyResult applied = scenes.applyActions(actions);
+            ApplyResult applied = scenes.applyActions(turn.viewer, actions);
             appliedCount = applied.applied();
             List<String> failedKeys = applied.failed().stream().map(f -> f.deviceId() + "/" + f.channel()).toList();
             for (SceneAction action : actions) {
@@ -229,9 +229,9 @@ class VoiceTools {
         return ok(call, result);
     }
 
-    private ObjectNode getLights(HomeCatalog catalog) {
+    private ObjectNode getLights(Viewer viewer, HomeCatalog catalog) {
         ArrayNode out = json.createArrayNode();
-        for (HomeDevice device : devices.snapshot().devices()) {
+        for (HomeDevice device : devices.snapshot(viewer).devices()) {
             for (HomeChannel channel : device.channels()) {
                 HomeCatalog.Light light = catalog.lightFor(device.id(), channel.id()).orElse(null);
                 if (light == null) {

@@ -69,10 +69,21 @@ export function moveItem<T>(list: T[], index: number, delta: number): T[] {
 
 export const isUnavailable = (d: Device, agentDown: boolean) => agentDown || !d.present || !d.reachable
 
+/** A device the person can look at but not change (it is in a room that is view only for them). */
+export const isLocked = (d: Device) => !d.controllable
+
+/** The small label a room carries when it is not open to everyone, or null. The admin hears what it means for the others. */
+export function roomBadge(room: Room, admin: boolean): string | null {
+  if (admin) return room.access === 'private' ? 'Private' : room.access === 'view' ? 'Others can only look' : null
+  if (room.access === 'private') return 'Private'
+  return room.canControl ? null : 'View only'
+}
+
 /** Why a device cannot be switched, or null when it can. */
 export function availabilityNote(d: Device, agentDown: boolean, now: Date = new Date()): string | null {
   if (!d.present) return `Not seen · last ${ago(d.lastSeenAt, now)}`
   if (agentDown || !d.reachable) return 'Unavailable'
+  if (!d.controllable) return 'View only'
   return null
 }
 
@@ -85,7 +96,11 @@ export function tileState(channel: Channel, unavailable: boolean): string {
 
 /** What to tell the user after a scene was applied. */
 export function describeApply(sceneName: string, result: ApplyResult): { ok: boolean; text: string } {
-  if (result.failed.length === 0) return { ok: true, text: `${sceneName} applied` }
+  const left = result.skipped ?? 0
+  if (result.failed.length === 0) {
+    const note = left > 0 ? ` (${left === 1 ? '1 light' : `${left} lights`} in a room you cannot control left out)` : ''
+    return { ok: true, text: `${sceneName} applied${note}` }
+  }
   const names = [...new Set(result.failed.map((f) => f.deviceName))].join(', ')
   const reason = result.failed[0].reason
   return { ok: false, text: `${sceneName}: ${names} did not respond${reason ? ` (${reason.toLowerCase()})` : ''}` }

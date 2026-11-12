@@ -68,7 +68,7 @@ describe('scene drafts', () => {
 describe('a scene that starts from the lights as they are', () => {
   const bar: Device = {
     id: 'bar', name: 'Bar', reportedName: 'Bar', type: 'yeelight', roomId: null, power: true, reachable: true, present: true,
-    updatedAt: null, lastSeenAt: '2026-10-24T11:00:00Z', channels: [],
+    updatedAt: null, lastSeenAt: '2026-10-24T11:00:00Z', channels: [], controllable: true,
   }
   const live = (over: Partial<Channel>): Channel => ({ ...channel('main'), ...over })
 

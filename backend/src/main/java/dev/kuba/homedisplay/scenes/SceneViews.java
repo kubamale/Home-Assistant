@@ -34,7 +34,14 @@ public final class SceneViews {
     public record Failure(String deviceId, String deviceName, String channel, String reason) {
     }
 
-    /** The outcome of applying a scene: how many actions went through and which did not. */
-    public record ApplyResult(int applied, List<Failure> failed) {
+    /**
+     * The outcome of applying a scene: how many actions went through, which did not, and how many were left out because
+     * they are for lights in a room the person may not control (the rest of the scene still applies).
+     */
+    public record ApplyResult(int applied, List<Failure> failed, int skipped) {
+
+        public ApplyResult(int applied, List<Failure> failed) {
+            this(applied, failed, 0);
+        }
     }
 }

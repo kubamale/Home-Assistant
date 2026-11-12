@@ -1,5 +1,5 @@
 import { hsvCss } from './color'
-import { availabilityNote, channelTitle, describeApply, groupDevices, isPinned, isUnavailable, moveItem, pinnedItems, samePin, tileState, toPinItems, togglePin } from './homeModel'
+import { availabilityNote, channelTitle, describeApply, groupDevices, isLocked, isPinned, isUnavailable, moveItem, pinnedItems, roomBadge, samePin, tileState, toPinItems, togglePin } from './homeModel'
 import type { Channel, Device, Room, Scene } from './types'
 
 function channel(id: string, over: Partial<Channel> = {}): Channel {
@@ -12,11 +12,11 @@ function channel(id: string, over: Partial<Channel> = {}): Channel {
 function device(id: string, over: Partial<Device> = {}): Device {
   return {
     id, name: id, reportedName: id, type: 'yeelight', roomId: null, power: false, reachable: true, present: true,
-    updatedAt: null, lastSeenAt: '2026-10-24T11:00:00Z', channels: [channel('main')], ...over,
+    updatedAt: null, lastSeenAt: '2026-10-24T11:00:00Z', channels: [channel('main')], controllable: true, ...over,
   }
 }
-const kitchen: Room = { id: 1, name: 'Kitchen', position: 0 }
-const hall: Room = { id: 2, name: 'Hall', position: 1 }
+const kitchen: Room = { id: 1, name: 'Kitchen', position: 0, access: 'open', canControl: true, members: [] }
+const hall: Room = { id: 2, name: 'Hall', position: 1, access: 'open', canControl: true, members: [] }
 
 describe('groupDevices', () => {
   it('keeps rooms in order, including empty ones, and collects unassigned devices', () => {
@@ -59,6 +59,12 @@ describe('pinned items', () => {
 describe('describeApply', () => {
   it('says so when everything went through', () => {
     expect(describeApply('Movie', { applied: 3, failed: [] })).toEqual({ ok: true, text: 'Movie applied' })
+  })
+
+  it('mentions lights that were left out because the room is not theirs to control', () => {
+    expect(describeApply('Evening', { applied: 2, failed: [], skipped: 1 })).toEqual({ ok: true, text: 'Evening applied (1 light in a room you cannot control left out)' })
+    expect(describeApply('Evening', { applied: 2, failed: [], skipped: 3 }).text).toBe('Evening applied (3 lights in a room you cannot control left out)')
+    expect(describeApply('Evening', { applied: 2, failed: [], skipped: 0 }).text).toBe('Evening applied')
   })
 
   it('names the lights that did not respond', () => {
@@ -148,5 +154,32 @@ describe('favourites', () => {
     expect(togglePin(four, { sceneId: 3 })).toEqual({ items: four, full: true })
     // but a full list can always lose one
     expect(togglePin(four, lamp).items).toHaveLength(3)
+  })
+})
+
+describe('rooms that are not open to everyone', () => {
+  const viewOnly: Room = { ...kitchen, access: 'view', canControl: false }
+  const privateRoom: Room = { ...hall, access: 'private', canControl: true, members: [3] }
+
+  it('labels a room for the person looking at it', () => {
+    expect(roomBadge(kitchen, false)).toBeNull()
+    expect(roomBadge(viewOnly, false)).toBe('View only')
+    expect(roomBadge(privateRoom, false)).toBe('Private')
+    expect(roomBadge({ ...kitchen, access: 'view', canControl: true, members: [3] }, false)).toBeNull() // she controls it, nothing to say
+  })
+
+  it('tells the admin what the setting means for the others', () => {
+    expect(roomBadge(kitchen, true)).toBeNull()
+    expect(roomBadge({ ...kitchen, access: 'view' }, true)).toBe('Others can only look')
+    expect(roomBadge(privateRoom, true)).toBe('Private')
+  })
+
+  it('treats a device the person cannot control as locked, and says why', () => {
+    const lamp = device('lamp', { controllable: false })
+    expect(isLocked(lamp)).toBe(true)
+    expect(isLocked(device('other'))).toBe(false)
+    expect(availabilityNote(lamp, false)).toBe('View only')
+    expect(availabilityNote(device('other'), false)).toBeNull()
+    expect(isUnavailable(lamp, false)).toBe(false) // locked is not the same as broken
   })
 })

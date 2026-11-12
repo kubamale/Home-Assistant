@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { useConnection } from '../connection'
 import { useApplyScene, useDevices, useRooms, useScenes, useSetChannel } from '../hooks/data'
 import { BulbIcon, SceneIcon } from './Icons'
-import { channelTitle, describeApply, isUnavailable, pinnedItems, tileState } from '../homeModel'
+import { channelTitle, describeApply, isLocked, isUnavailable, pinnedItems, tileState } from '../homeModel'
 
 /** How long a tile has to be held to open the device panel instead of toggling. */
 const LONG_PRESS_MS = 500
@@ -126,7 +126,7 @@ export function QuickAccessCard({ hint, onAllDevices, onOpenDevice, onEdit }: {
               state={state}
               on={channel.on && !unavailable}
               unavailable={unavailable}
-              disabled={unavailable || offline || pending}
+              disabled={unavailable || isLocked(device) || offline || pending}
               onToggle={() => setChannel.mutate({ deviceId: device.id, channel: channel.id, change: { on: !channel.on } })}
               onOpen={onOpenDevice && (() => onOpenDevice(device.id))}
             />

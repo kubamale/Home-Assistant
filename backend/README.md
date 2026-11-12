@@ -173,6 +173,22 @@ The authoritative route table is `security/SecurityConfig.java`. In short:
 | everything else under `/api/**` | user only |
 | anything else (the web app's files) | public, so the app can load before login |
 
+### Who may use a room
+
+Every room has a setting (`room.access`) and, for the two restricted settings, a list of people (`room_member`). One service, `RoomAccess`, answers "may this person see / control a device in this room?", and everything that shows or changes a device asks it, so the rule is enforced in one place:
+
+| Setting | See the room and its devices | Control them |
+|---|---|---|
+| `open` (the default, and what every room was before) | everyone | everyone |
+| `view` | everyone | the people listed |
+| `private` | the people listed | the people listed |
+
+- **The admin always can**, whatever the setting. A **display acts as its owner**, so it can do exactly what its owner can, and a person who is not listed gets the same from every screen they own. A device with no room is open to everyone.
+- **What is enforced where.** `GET /api/devices` leaves out the devices of a private room the person is not in, and marks each device `controllable`. `POST /api/devices/{id}/power` and `/channels/{channel}` answer **404** for a device the person cannot see (they are not told it exists) and **403** for one they can see but not control. Pinning a light as a favourite needs control. A **scene** can only name lights the person controls (404 or 403 otherwise); when a scene is applied, the lights in rooms the person cannot control are **left out and counted** (`skipped` in the result) and the rest still runs, so a shared scene pressed by someone only changes what is theirs; *All off* means every light the person controls and so never reports a skip. Lights the person cannot see are not listed in a scene's actions, and are kept in the scene when they save it. **The assistant and voice** are given only the lights the person controls, and the rooms they can see, so it cannot be talked around the rule (`HomeCatalog` is built from them).
+- `GET /api/rooms` returns each room as `{id, name, position, access, canControl, members}`: `canControl` is for the asker, and `members` (the people's ids) is only filled in for the admin. `PUT /api/rooms/{id}/access` (admin) takes `{access, members}`; `members` must be accounts that exist, is ignored for `open`, and may be empty (a private room with nobody listed is the admin's alone). Deleting a person removes them from every list (foreign key).
+- **What this does not protect.** It governs what people can do through this application (the phone, the displays, the assistant). The lamps themselves still have *LAN Control* switched on, so anyone on the home network with the Yeelight app, or a script, can still switch them directly. This is a household courtesy lock, not a security boundary against someone determined who is on your Wi-Fi.
+- A migration cannot change what existing rooms do: `V8__room_access.sql` makes every existing room `open`.
+
 ### Login and rate limiting
 
 - Name and password (bcrypt-verified); a blank name means the admin, which is how a one-password installation keeps signing in. A wrong name and a wrong password look the same, and cost the same time. `POST /api/auth/login` returns the session
@@ -262,16 +278,17 @@ JSON over HTTP, all under `/api`. "Role" is the minimum: **U** = user only, **U/
 
 | Method and path | Role | Notes |
 |---|---|---|
-| `GET /api/devices` | U/D | `{devices[], agentOnline}`. See the device shape below. |
-| `POST /api/devices/{id}/power` | U/D | `{on}` → the device. Every channel on or off. |
+| `GET /api/devices` | U/D | `{devices[], agentOnline}`: the devices the caller may see, each with `controllable`. See the device shape below. |
+| `POST /api/devices/{id}/power` | U/D | `{on}` → the device. Every channel on or off. `404` if the device is in a private room the caller is not in, `403` if the room is view only for them. |
 | `POST /api/devices/{id}/channels/{channel}` | U/D | `ChannelChange` → the device. |
 | `PATCH /api/devices/{id}` | U | `{name?, roomId?, clearRoom?}`. A blank name restores the reported name. |
 | `DELETE /api/devices/{id}` | U | Forget a stored device (and its pins and scene actions). If the agent lists it again it returns, unassigned. |
 | `PUT /api/quick-access` | U | `{items:[{deviceId, channel} \| {sceneId}]}`, at most **4**, no duplicates. Replaces **the caller's** slots in order (`GET /api/devices` and `/api/scenes` show the caller's own pins). A scene must be one they can see. |
-| `GET /api/rooms` | U/D | `{rooms:[{id, name, position}]}` |
+| `GET /api/rooms` | U/D | `{rooms:[{id, name, position, access, canControl, members}]}`: only the rooms the caller may see; `members` is the admin's to see. See *Who may use a room*. |
 | `POST /api/rooms` | U | `{name}` → `201`. `409` if the name exists (case-insensitive). |
 | `PATCH /api/rooms/{id}` | U | `{name}` |
 | `DELETE /api/rooms/{id}` | U | Its devices are kept and become unassigned. |
+| `PUT /api/rooms/{id}/access` | A | `{access: open\|view\|private, members:[userId]}` → `204`. `400` for an unknown setting or a person without an account, `404` for an unknown room. |
 | `PUT /api/rooms/order` | U | `{roomIds}`: every room exactly once, else `400`. |
 
 `ChannelChange` (all fields optional, at least one required): `on`, `brightness` (1–100),
@@ -495,9 +512,10 @@ SQLite via Flyway (`src/main/resources/db/migration`). Timestamps are ISO-8601 t
 | `V4__scenes.sql` | scenes and actions, the built-in scene, quick access can hold a scene (table rebuilt) |
 | `V5__voice_turn.sql` | the assistant's log of questions and outcomes |
 | `V6__display_room.sql` | `credential.room_id` (nullable, `on delete set null`): the room a display is in |
+| `V8__room_access.sql` | `room.access` (`open`, `view`, `private`; every existing room `open`) and `room_member` (who a restricted room names, cascading with the room and the person) |
 | `V7__users.sql` | accounts: `app_user` (the admin is row 1), `user_id` on credentials, tasks and scenes, `credential.layout`, quick access per person (table rebuilt), `user_calendar`. Everything that existed becomes the admin's; scenes stay shared. `UserMigrationTest` upgrades a real V6 database to check this. |
 
-Rules: **never edit a migration that has run anywhere**; add `V8__…`. SQLite cannot alter
+Rules: **never edit a migration that has run anywhere**; add `V9__…`. SQLite cannot alter
 constraints in place, so changing one means rebuilding the table (create new, copy, drop, rename), as V3
 and V4 do. Foreign keys are enabled in the connection URL, and the schema relies on them
 (`on delete set null`, `cascade`).
@@ -521,6 +539,7 @@ base class empties the tables, re-seeds "All off", resets the fake lights and cl
 | `AuthTest` | login, cookie flags, rate limit, roles per route, pairing flow, origin check, revocation |
 | `UsersTest` | accounts and their rules (sign-in, passwords, who may manage people and the home), tasks, pins and scenes belonging to one person, displays belonging to their owner, who may arrange which display, layout validation |
 | `PersonalCalendarTest` | connecting a person's own calendar against a fake CalDAV server, the password stored encrypted and never returned, a wrong password not saved, addresses on the server itself refused, a password that can no longer be decrypted |
+| `RoomAccessTest` | the three room settings: who sees and controls what (phone, display, admin), 404 vs 403, scenes applying only what is allowed and keeping hidden lights, favourites, who may change a room's setting, members cleaned up with the person |
 | `UserMigrationTest` | upgrading a real V6 database: everything that existed becomes the admin's |
 | `TaskTest` | creating, editing, "today" rules, overdue, display may only tick |
 | `SettingsAndWeatherTest`, `OpenMeteoParsingTest` | location validation, geocoding, caching and staleness, response parsing |

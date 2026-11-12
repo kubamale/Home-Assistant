@@ -56,19 +56,23 @@ public class DeviceController {
 
     @GetMapping("/devices")
     public DeviceService.Snapshot list(Authentication authentication) {
-        return devices.snapshot(((CredentialPrincipal) authentication.getPrincipal()).requireUser());
+        return devices.snapshot(viewer(authentication));
     }
 
     @PostMapping("/devices/{id}/power")
-    public HomeDevice setPower(@PathVariable String id, @Valid @RequestBody PowerRequest request) {
-        return devices.setPower(id, request.on());
+    public HomeDevice setPower(@PathVariable String id, @Valid @RequestBody PowerRequest request, Authentication authentication) {
+        return devices.setPower(viewer(authentication), id, request.on());
     }
 
     /** Changes one channel: power, brightness, colour temperature or colour. */
     @PostMapping("/devices/{id}/channels/{channel}")
     public HomeDevice setChannel(@PathVariable String id, @PathVariable String channel,
-            @RequestBody ChannelChange change) {
-        return devices.setChannel(id, channel, change);
+            @RequestBody ChannelChange change, Authentication authentication) {
+        return devices.setChannel(viewer(authentication), id, channel, change);
+    }
+
+    private static Viewer viewer(Authentication authentication) {
+        return Viewer.of((CredentialPrincipal) authentication.getPrincipal());
     }
 
     @PatchMapping("/devices/{id}")
@@ -85,7 +89,7 @@ public class DeviceController {
 
     @PutMapping("/quick-access")
     public ResponseEntity<Void> setQuickAccess(@Valid @RequestBody QuickAccessRequest request, Authentication authentication) {
-        devices.setQuickAccess(Viewer.of((CredentialPrincipal) authentication.getPrincipal()), request.items().stream().map(PinRequest::toItem).toList());
+        devices.setQuickAccess(viewer(authentication), request.items().stream().map(PinRequest::toItem).toList());
         return ResponseEntity.noContent().build();
     }
 }
