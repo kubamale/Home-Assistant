@@ -1,8 +1,12 @@
 import type {
+  AppUser,
+  CalendarConnection,
   CalendarSnapshot,
   ApplyResult,
   ChannelChange,
   CredentialView,
+  DisplayConfig,
+  DisplayLayout,
   DevicesSnapshot,
   PairStart,
   PinItem,
@@ -57,7 +61,8 @@ export type PairPoll = 'pending' | 'approved' | 'expired'
 export const api = {
   // session
   me: () => request<SessionInfo>('GET', '/api/auth/me'),
-  login: (password: string) => request<SessionInfo>('POST', '/api/auth/login', { password }),
+  /** An empty name signs in as the admin. */
+  login: (name: string, password: string) => request<SessionInfo>('POST', '/api/auth/login', { name: name.trim() || undefined, password }),
   logout: () => request<void>('POST', '/api/auth/logout'),
 
   // display pairing
@@ -71,8 +76,8 @@ export const api = {
     if (response.status === 410) return 'expired'
     throw new ApiError(response.status, response.statusText)
   },
-  pairApprove: (userCode: string, label?: string) =>
-    request<{ id: string; label: string }>('POST', '/api/auth/pair/approve', { userCode, label }),
+  pairApprove: (userCode: string, label?: string, userId?: number) =>
+    request<{ id: string; label: string; userId: number; userName: string }>('POST', '/api/auth/pair/approve', { userCode, label, userId }),
 
   // data
   weather: () => request<WeatherSnapshot>('GET', '/api/weather'),
@@ -92,9 +97,10 @@ export const api = {
     request<unknown>('POST', `/api/devices/${encodeURIComponent(id)}/channels/${encodeURIComponent(channel)}`, change),
 
   // scenes
-  createScene: (name: string, actions: SceneActionPayload[]) => request<Scene>('POST', '/api/scenes', { name, actions }),
-  captureScene: (name: string, channels: { deviceId: string; channel: string }[]) =>
-    request<Scene>('POST', '/api/scenes/capture', { name, channels }),
+  createScene: (name: string, actions: SceneActionPayload[], shared = false) =>
+    request<Scene>('POST', '/api/scenes', { name, actions, shared }),
+  captureScene: (name: string, channels: { deviceId: string; channel: string }[], shared = false) =>
+    request<Scene>('POST', '/api/scenes/capture', { name, channels, shared }),
   updateScene: (id: number, name: string, actions?: SceneActionPayload[]) => request<Scene>('PUT', `/api/scenes/${id}`, { name, actions }),
   deleteScene: (id: number) => request<void>('DELETE', `/api/scenes/${id}`),
   reorderScenes: (sceneIds: number[]) => request<void>('PUT', '/api/scenes/order', { sceneIds }),
@@ -147,6 +153,28 @@ export const api = {
   credentials: () => request<CredentialView[]>('GET', '/api/credentials'),
   revokeCredential: (id: string) => request<void>('DELETE', `/api/credentials/${id}`),
   setDisplayRoom: (id: string, roomId: number | null) => request<void>('PUT', `/api/credentials/${id}/room`, { roomId }),
+  setDisplayUser: (id: string, userId: number) => request<void>('PUT', `/api/credentials/${id}/user`, { userId }),
+
+  // the look of a display
+  displayConfig: () => request<DisplayConfig>('GET', '/api/display/config'),
+  displayLayout: (id: string) => request<DisplayLayout>('GET', `/api/credentials/${id}/layout`),
+  saveDisplayLayout: (id: string, layout: DisplayLayout) => request<DisplayLayout>('PUT', `/api/credentials/${id}/layout`, layout),
+  resetDisplayLayout: (id: string) => request<DisplayLayout>('DELETE', `/api/credentials/${id}/layout`),
+
+  // people
+  users: () => request<AppUser[]>('GET', '/api/users'),
+  createUser: (name: string, password: string) => request<AppUser>('POST', '/api/users', { name, password }),
+  renameUser: (id: number, name: string) => request<AppUser>('PUT', `/api/users/${id}/name`, { name }),
+  setUserPassword: (id: number, password: string, currentPassword?: string) =>
+    request<void>('PUT', `/api/users/${id}/password`, { password, currentPassword }),
+  deleteUser: (id: number) => request<void>('DELETE', `/api/users/${id}`),
+
+  // a person's own calendar
+  calendarConnection: () => request<CalendarConnection>('GET', '/api/calendar/connection'),
+  connectCalendar: (c: { url?: string; username: string; password: string; calendars: string[] }) =>
+    request<CalendarConnection>('PUT', '/api/calendar/connection', c),
+  disconnectCalendar: () => request<void>('DELETE', '/api/calendar/connection'),
+
   createAgentToken: (label: string) =>
     request<{ id: string; token: string }>('POST', '/api/credentials/agent', { label }),
 }

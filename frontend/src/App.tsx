@@ -1,5 +1,6 @@
 import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom'
 import { PhoneTabs } from './components/TabBar'
+import { SkyBackground } from './components/SkyBackground'
 import { ConnectionProvider } from './connection'
 import { useSession } from './hooks/data'
 import { Approve } from './pages/Approve'
@@ -8,6 +9,15 @@ import { Dashboard } from './pages/Dashboard'
 import { Login } from './pages/Login'
 import { Pair } from './pages/Pair'
 import { Settings } from './pages/Settings'
+import { AccountPage } from './pages/settings/AccountPage'
+import { AppearancePage } from './pages/settings/AppearancePage'
+import { AgentPage } from './pages/settings/AgentPage'
+import { CalendarPage } from './pages/settings/CalendarPage'
+import { DisplayPage } from './pages/settings/DisplayPage'
+import { LocationPage } from './pages/settings/LocationPage'
+import { PeoplePage } from './pages/settings/PeoplePage'
+import { PhonesPage } from './pages/settings/PhonesPage'
+import { VoicePage } from './pages/settings/VoicePage'
 import { SmartHome } from './pages/SmartHome'
 import { Wall } from './pages/Wall'
 
@@ -29,24 +39,46 @@ function RequireAuth({ role, redirectTo }: { role?: 'user'; redirectTo: string }
   )
 }
 
+/** Pages that manage the home itself. Anyone else is sent back to the menu. */
+function RequireAdmin() {
+  const session = useSession()
+  if (session.isPending) return <p className="center muted">Loading…</p>
+  if (!session.data?.admin) return <Navigate to="/settings" replace />
+  return <Outlet />
+}
+
 export function App() {
   return (
-    <Routes>
-      <Route path="/login" element={<Login />} />
-      <Route path="/pair" element={<Pair />} />
-      <Route element={<RequireAuth redirectTo="/pair" />}>
+    <>
+      <SkyBackground />
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route path="/pair" element={<Pair />} />
+        <Route element={<RequireAuth redirectTo="/pair" />}>
         <Route path="/wall" element={<Wall />} />
-      </Route>
-      <Route element={<RequireAuth role="user" redirectTo="/login" />}>
+        </Route>
+        <Route element={<RequireAuth role="user" redirectTo="/login" />}>
         <Route element={<PhoneTabs />}>
           <Route path="/" element={<Dashboard />} />
           <Route path="/home" element={<SmartHome />} />
           <Route path="/assistant" element={<Assistant />} />
         </Route>
         <Route path="/settings" element={<Settings />} />
+        <Route path="/settings/account" element={<AccountPage />} />
+        <Route path="/settings/calendar" element={<CalendarPage />} />
+        <Route path="/settings/appearance" element={<AppearancePage />} />
+        <Route path="/settings/phones" element={<PhonesPage />} />
+        <Route path="/settings/display/:id" element={<DisplayPage />} />
+        <Route element={<RequireAdmin />}>
+          <Route path="/settings/location" element={<LocationPage />} />
+          <Route path="/settings/voice" element={<VoicePage />} />
+          <Route path="/settings/people" element={<PeoplePage />} />
+          <Route path="/settings/agent" element={<AgentPage />} />
+        </Route>
         <Route path="/approve" element={<Approve />} />
-      </Route>
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+        </Route>
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </>
   )
 }

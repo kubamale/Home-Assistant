@@ -38,7 +38,7 @@ export function WallDevices({ onBack, onOpen }: { onBack: () => void; onOpen: (d
             <h2>{section.title}</h2>
             <ul className="device-list">
               {section.devices.map((d) => (
-                <DeviceRow key={d.id} device={d} rooms={[]} pinned={[]} agentDown={agentDown} offline={offline} edit={false} onOpen={onOpen} />
+                <DeviceRow key={d.id} device={d} agentDown={agentDown} offline={offline} onOpen={onOpen} />
               ))}
             </ul>
           </section>

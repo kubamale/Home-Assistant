@@ -7,6 +7,7 @@ services:
     restart: unless-stopped
     environment:
       APP_PASSWORD_HASH: ${APP_PASSWORD_HASH:?set APP_PASSWORD_HASH in .env}
+      APP_SECRET_KEY: ${APP_SECRET_KEY:-}
       APP_DEVICES_MODE: agent
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}

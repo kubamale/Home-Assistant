@@ -68,12 +68,14 @@ public abstract class IntegrationTest {
         jdbc.sql("delete from quick_access").update();
         jdbc.sql("delete from scene_action").update();
         jdbc.sql("delete from scene").update();
-        jdbc.sql("insert into scene (name, position, kind) values ('All off', 0, 'all_off')").update(); // the built-in scene
+        jdbc.sql("insert into scene (name, position, kind) values ('All off', 0, 'all_off')").update(); // the built-in scene, shared
         jdbc.sql("delete from device").update();
         jdbc.sql("delete from room").update();
         fakeDevices.reset();
         fakeDevices.announce(); // the simulated lights are listed again, as the agent does on connect
         jdbc.sql("delete from credential").update();
+        jdbc.sql("delete from user_calendar").update();
+        jdbc.sql("delete from app_user where admin = 0").update(); // the admin stays, as after a real first start
         jdbc.sql("delete from setting").update();
         clock.set(START);
         limiter.success("login:127.0.0.1");
@@ -89,6 +91,25 @@ public abstract class IntegrationTest {
                 .andReturn().getResponse());
     }
 
+    /** Logs in as a person other than the admin. */
+    protected Cookie loginAs(String name, String password) throws Exception {
+        return cookieFrom(mvc.perform(post("/api/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"" + name + "\",\"password\":\"" + password + "\"}"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse());
+    }
+
+    /** The admin adds a person and returns their id. */
+    protected long createUser(Cookie admin, String name, String password) throws Exception {
+        String response = mvc.perform(post("/api/users").cookie(admin)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"" + name + "\",\"password\":\"" + password + "\"}"))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        return Long.parseLong(response.replaceAll(".*?\"id\":(\\d+).*", "$1"));
+    }
+
     protected static Cookie cookieFrom(MockHttpServletResponse response) {
         Cookie cookie = response.getCookie(AuthCookies.NAME);
         if (cookie == null) {
@@ -99,12 +120,18 @@ public abstract class IntegrationTest {
 
     /** Pairs a door screen through the full flow and returns its cookie. */
     protected Cookie pairDisplay(Cookie user) throws Exception {
+        return pairDisplay(user, null);
+    }
+
+    /** As {@link #pairDisplay(Cookie)}, for the person with this id (null: the one approving). */
+    protected Cookie pairDisplay(Cookie user, Long forUser) throws Exception {
         String start = mvc.perform(post("/api/auth/pair/start")).andReturn().getResponse().getContentAsString();
         String deviceCode = start.replaceAll(".*\"deviceCode\":\"([^\"]+)\".*", "$1");
         String userCode = start.replaceAll(".*\"userCode\":\"([^\"]+)\".*", "$1");
         mvc.perform(post("/api/auth/pair/approve").cookie(user)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"userCode\":\"" + userCode + "\",\"label\":\"Test door\"}"))
+                .content("{\"userCode\":\"" + userCode + "\",\"label\":\"Test door\""
+                        + (forUser == null ? "" : ",\"userId\":" + forUser) + "}"))
                 .andExpect(status().isOk());
         return cookieFrom(mvc.perform(
                 org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/auth/pair/poll")

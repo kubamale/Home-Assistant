@@ -16,8 +16,10 @@ import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.access.intercept.AuthorizationFilter;
 
 /**
- * Three credential kinds, one rule set: the phone (user) can do everything, the door screen
- * (display) can read, tick tasks and toggle lights, the agent can only open its WebSocket.
+ * Three credential kinds, one rule set: the phone (user) can do everything for its own person, the door screen
+ * (display) can read, tick tasks and toggle lights, the agent can only open its WebSocket. A phone logged in as the admin
+ * also manages the home itself (rooms, devices, the location, the voice, the agent, who has an account); what belongs to
+ * one person (tasks, pins, calendar, own scenes, own displays) is checked where it is used.
  */
 @Configuration
 @EnableWebSecurity
@@ -47,6 +49,18 @@ public class SecurityConfig {
                                 "/api/auth/pair/start").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/auth/pair/poll", "/api/health").permitAll()
                         .requestMatchers("/agent/ws").hasRole("AGENT")
+                        // managing the home
+                        .requestMatchers(HttpMethod.POST, "/api/rooms").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PATCH, "/api/rooms/*", "/api/devices/*").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/api/rooms/*", "/api/devices/*").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PUT, "/api/rooms/order", "/api/settings/location",
+                                "/api/voice/settings", "/api/credentials/*/user").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/credentials/agent").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/voice/history").hasRole("ADMIN")
+                        // accounts: anyone changes their own password (checked in the controller), the rest is the admin's
+                        .requestMatchers(HttpMethod.PUT, "/api/users/*/password").hasRole("USER")
+                        .requestMatchers("/api/users", "/api/users/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/display/config").hasRole("DISPLAY")
                         .requestMatchers(HttpMethod.PATCH, "/api/tasks/*").hasAnyRole("USER", "DISPLAY")
                         .requestMatchers(HttpMethod.POST, "/api/devices/*/power", "/api/devices/*/channels/*",
                                 "/api/scenes/*/apply", "/api/voice/command")

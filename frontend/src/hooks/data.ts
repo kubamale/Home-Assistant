@@ -24,7 +24,8 @@ export function useSession() {
   })
 }
 
-export const useWeather = () => useQuery({ queryKey: ['weather'], queryFn: api.weather, ...common })
+export const useWeather = (options: { enabled?: boolean } = {}) =>
+  useQuery({ queryKey: ['weather'], queryFn: api.weather, ...common, enabled: options.enabled ?? true })
 export const useCalendar = () => useQuery({ queryKey: ['calendar'], queryFn: api.calendar, ...common })
 export const useDevices = () => useQuery({ queryKey: ['devices'], queryFn: api.devices, ...common })
 export const useRooms = () => useQuery({ queryKey: ['rooms'], queryFn: api.rooms, ...common })
@@ -32,6 +33,20 @@ export const useScenes = () => useQuery({ queryKey: ['scenes'], queryFn: api.sce
 export const useVoiceStatus = () => useQuery({ queryKey: ['voice', 'status'], queryFn: api.voiceStatus, ...common })
 export const useVoiceSettings = () => useQuery({ queryKey: ['voice', 'settings'], queryFn: api.voiceSettings, ...common })
 export const useVoiceVoices = () => useQuery({ queryKey: ['voice', 'voices'], queryFn: api.voiceVoices, staleTime: Infinity })
+/** How this wall display looks and whose it is. Only displays have one. */
+export const useDisplayConfig = () => useQuery({ queryKey: ['display'], queryFn: api.displayConfig, ...common })
+/** Phones, displays and (for the admin) the agent: the person's own, or everyone's for the admin. */
+export const useCredentials = () => useQuery({ queryKey: ['credentials'], queryFn: api.credentials, staleTime: 60_000, retry: 1 })
+export const useUsers = (options: { enabled?: boolean } = {}) =>
+  useQuery({ queryKey: ['users'], queryFn: api.users, staleTime: 60_000, retry: 1, enabled: options.enabled ?? true })
+export const useCalendarConnection = () =>
+  useQuery({ queryKey: ['calendarConnection'], queryFn: api.calendarConnection, staleTime: 60_000, retry: 1 })
+
+/** Whether the signed-in person manages the home (rooms, devices, location, voice, the agent, accounts). */
+export function useIsAdmin(): boolean {
+  return useSession().data?.admin === true
+}
+
 export const useSettings = () => useQuery({ queryKey: ['settings'], queryFn: api.settings, ...common })
 export const useTasks = (scope: 'today' | 'all' = 'today') =>
   useQuery({ queryKey: ['tasks', scope], queryFn: () => api.tasks(scope), ...common })
@@ -101,9 +116,11 @@ export const useUpdateDevice = () =>
 export const useForgetDevice = () => useHomeMutation((id: string) => api.forgetDevice(id))
 export const useSetQuickAccess = () => useHomeMutation((items: PinItem[]) => api.setQuickAccess(items))
 
-export const useCreateScene = () => useHomeMutation((v: { name: string; actions: SceneActionPayload[] }) => api.createScene(v.name, v.actions))
+export const useCreateScene = () =>
+  useHomeMutation((v: { name: string; actions: SceneActionPayload[]; shared?: boolean }) => api.createScene(v.name, v.actions, v.shared))
 export const useCaptureScene = () =>
-  useHomeMutation((v: { name: string; channels: { deviceId: string; channel: string }[] }) => api.captureScene(v.name, v.channels))
+  useHomeMutation((v: { name: string; channels: { deviceId: string; channel: string }[]; shared?: boolean }) =>
+    api.captureScene(v.name, v.channels, v.shared))
 export const useUpdateScene = () =>
   useHomeMutation((v: { id: number; name: string; actions?: SceneActionPayload[] }) => api.updateScene(v.id, v.name, v.actions))
 export const useDeleteScene = () => useHomeMutation((id: number) => api.deleteScene(id))

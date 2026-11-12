@@ -13,7 +13,12 @@ public record AppProperties(Auth auth, Weather weather, Calendar calendar, Devic
             String passwordHash,
             String password,
             @DefaultValue("90") int sessionDays,
-            @DefaultValue("true") boolean secureCookies) {
+            @DefaultValue("true") boolean secureCookies,
+            /**
+             * Encrypts the calendar passwords people save in the app (any long random text). Without it the app
+             * refuses to store them, and the admin's calendar can still be the one set up on the server.
+             */
+            String secretKey) {
     }
 
     public record Weather(

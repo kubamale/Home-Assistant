@@ -35,6 +35,8 @@ app:
     password: ${APP_PASSWORD:}
     session-days: 90
     secure-cookies: ${APP_SECURE_COOKIES:true}
+    # Encrypts the calendar passwords people save in the app. Any long random text; without it they cannot be saved.
+    secret-key: ${APP_SECRET_KEY:}
   weather:
     forecast-url: https://api.open-meteo.com/v1/forecast
     geocoding-url: https://geocoding-api.open-meteo.com/v1/search

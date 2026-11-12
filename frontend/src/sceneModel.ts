@@ -58,6 +58,35 @@ export function draftForLight(device: Device, channel: Channel): ActionDraft {
   }
 }
 
+/**
+ * A light as it is right now, as a draft: off stays off, and on keeps its brightness and its colour or white. This is what
+ * "start from my lights as they are" uses, so a scene begins as a picture of the room and is then adjusted.
+ */
+export function draftFromChannel(device: Device, channel: Channel): ActionDraft {
+  const base = draftForLight(device, channel)
+  if (!channel.on) return { ...base, includePower: true, on: false }
+  const showsColor = channel.capabilities.color && channel.hue !== null && channel.saturation !== null && (channel.colorMode !== 'temperature' || channel.colorTemp === null)
+  return {
+    ...base,
+    includePower: true,
+    on: true,
+    includeBrightness: channel.capabilities.brightness && channel.brightness !== null,
+    includeColor: showsColor,
+    includeWhite: !showsColor && channel.capabilities.colorTemp !== null && channel.colorTemp !== null,
+  }
+}
+
+/** What a draft will do, in a few words, for the collapsed card of a light: "Off", "On, 40%, 3000 K", "On, colour". */
+export function summarizeDraft(d: ActionDraft): string {
+  if (d.includePower && !d.on) return 'Off'
+  const parts: string[] = []
+  if (d.includePower) parts.push('On')
+  if (d.includeBrightness) parts.push(`${d.brightness}%`)
+  if (d.includeWhite) parts.push(`${d.colorTemp} K`)
+  if (d.includeColor) parts.push('colour')
+  return parts.length === 0 ? 'No change' : parts.join(', ')
+}
+
 /** Includes or drops white; including it drops colour, because a light shows one or the other. */
 export const toggleWhite = (d: ActionDraft): ActionDraft => ({ ...d, includeWhite: !d.includeWhite, includeColor: d.includeWhite ? d.includeColor : false })
 export const toggleColor = (d: ActionDraft): ActionDraft => ({ ...d, includeColor: !d.includeColor, includeWhite: d.includeColor ? d.includeWhite : false })

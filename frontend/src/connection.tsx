@@ -15,6 +15,8 @@ const EVENT_KEYS: Record<string, string[]> = {
   'weather.changed': ['weather'],
   'calendar.changed': ['calendar'],
   'settings.changed': ['settings', 'weather', 'calendar', 'tasks', 'voice'],
+  // a display's layout was edited, or it was given to someone else (then everything on it is theirs)
+  'display.changed': ['display', 'session', 'tasks', 'devices', 'scenes', 'calendar', 'calendarConnection', 'credentials'],
 }
 
 const BACKOFF_MS = [1000, 2000, 5000, 10000, 30000]

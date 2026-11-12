@@ -24,6 +24,11 @@ public class CredentialService {
     /** Avoid a database write on every request. */
     private static final Duration LAST_USED_GRANULARITY = Duration.ofHours(1);
 
+    private static final String SELECT = """
+            select c.id, c.kind, c.label, c.created_at, c.last_used_at, c.revoked_at, c.room_id, c.user_id,
+                   coalesce(u.admin, 0) as admin, u.name as user_name
+            from credential c left join app_user u on u.id = c.user_id""";
+
     private static final RowMapper<Credential> MAPPER = (rs, n) -> new Credential(
             rs.getString("id"),
             CredentialKind.fromDb(rs.getString("kind")),
@@ -31,10 +36,13 @@ public class CredentialService {
             Instant.parse(rs.getString("created_at")),
             parse(rs.getString("last_used_at")),
             parse(rs.getString("revoked_at")),
-            room(rs));
+            nullableLong(rs, "room_id"),
+            nullableLong(rs, "user_id"),
+            rs.getInt("admin") == 1,
+            rs.getString("user_name"));
 
-    private static Long room(java.sql.ResultSet rs) throws java.sql.SQLException {
-        long id = rs.getLong("room_id");
+    private static Long nullableLong(java.sql.ResultSet rs, String column) throws java.sql.SQLException {
+        long id = rs.getLong(column);
         return rs.wasNull() ? null : id;
     }
 
@@ -51,16 +59,22 @@ public class CredentialService {
     public record Issued(Credential credential, String token) {
     }
 
+    /** A credential that acts as no one in particular (the agent's). */
     public Issued issue(CredentialKind kind, String label) {
+        return issue(kind, label, null);
+    }
+
+    /** A credential that acts as this person. */
+    public Issued issue(CredentialKind kind, String label, Long userId) {
         byte[] bytes = new byte[32];
         random.nextBytes(bytes);
         String token = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
         String id = UUID.randomUUID().toString();
         Instant now = clock.instant();
-        jdbc.sql("insert into credential (id, kind, token_hash, label, created_at) values (?, ?, ?, ?, ?)")
-                .params(id, kind.dbValue(), hash(token), label, now.toString())
+        jdbc.sql("insert into credential (id, kind, token_hash, label, created_at, user_id) values (?, ?, ?, ?, ?, ?)")
+                .params(id, kind.dbValue(), hash(token), label, now.toString(), userId)
                 .update();
-        return new Issued(new Credential(id, kind, label, now, null, null, null), token);
+        return find(id).map(c -> new Issued(c, token)).orElseThrow();
     }
 
     /** Returns the active credential for a raw token, or empty if unknown or revoked. */
@@ -69,7 +83,7 @@ public class CredentialService {
             return Optional.empty();
         }
         Optional<Credential> found = jdbc
-                .sql("select id, kind, label, created_at, last_used_at, revoked_at, room_id from credential where token_hash = ?")
+                .sql(SELECT + " where c.token_hash = ?")
                 .param(hash(token))
                 .query(MAPPER)
                 .optional()
@@ -79,11 +93,18 @@ public class CredentialService {
     }
 
     public List<Credential> list() {
-        return jdbc.sql("""
-                select id, kind, label, created_at, last_used_at, revoked_at, room_id
-                from credential where revoked_at is null order by created_at""")
-                .query(MAPPER)
-                .list();
+        return jdbc.sql(SELECT + " where c.revoked_at is null order by c.created_at").query(MAPPER).list();
+    }
+
+    /** What this person's own phones and displays are. */
+    public List<Credential> listFor(long userId) {
+        return jdbc.sql(SELECT + " where c.revoked_at is null and c.user_id = ? order by c.created_at")
+                .param(userId).query(MAPPER).list();
+    }
+
+    /** An active credential by id. */
+    public Optional<Credential> find(String id) {
+        return jdbc.sql(SELECT + " where c.id = ? and c.revoked_at is null").param(id).query(MAPPER).optional();
     }
 
     public boolean revoke(String id) {
@@ -96,7 +117,7 @@ public class CredentialService {
     public Optional<Long> roomOf(String credentialId) {
         return jdbc.sql("select room_id from credential where id = ? and revoked_at is null")
                 .param(credentialId)
-                .query((rs, n) -> room(rs))
+                .query((rs, n) -> nullableLong(rs, "room_id"))
                 .optional();
     }
 
@@ -104,6 +125,27 @@ public class CredentialService {
     public boolean setRoom(String id, Long roomId) {
         return jdbc.sql("update credential set room_id = ? where id = ? and revoked_at is null and kind = ?")
                 .params(roomId, id, CredentialKind.DISPLAY.dbValue())
+                .update() > 0;
+    }
+
+    /** Hands a display to another person. False when there is no such active display. */
+    public boolean setUser(String id, long userId) {
+        return jdbc.sql("update credential set user_id = ? where id = ? and revoked_at is null and kind = ?")
+                .params(userId, id, CredentialKind.DISPLAY.dbValue())
+                .update() > 0;
+    }
+
+    /** The stored layout JSON of a display, if it was ever set. */
+    public Optional<String> layoutOf(String id) {
+        return jdbc.sql("select layout from credential where id = ? and revoked_at is null and kind = ?")
+                .params(id, CredentialKind.DISPLAY.dbValue())
+                .query(String.class)
+                .optional();
+    }
+
+    public boolean setLayout(String id, String layoutJson) {
+        return jdbc.sql("update credential set layout = ? where id = ? and revoked_at is null and kind = ?")
+                .params(layoutJson, id, CredentialKind.DISPLAY.dbValue())
                 .update() > 0;
     }
 

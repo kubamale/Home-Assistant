@@ -142,7 +142,7 @@ class VoiceSessionHandler extends AbstractWebSocketHandler {
                     c.pcm.reset();
                     c.receiving = true;
                     c.tooLong = false;
-                    c.live = listenLive();
+                    c.live = listenLive(c);
                 }
                 c.speak = node.path("speak").asBoolean(true);
                 if (node.hasNonNull("conversationId")) {
@@ -255,7 +255,7 @@ class VoiceSessionHandler extends AbstractWebSocketHandler {
                 giveUp(live);
                 throw e;
             }
-            String text = transcribe(audio, live);
+            String text = transcribe(c, audio, live);
             long heard = millisSince(begun);
             if (cancelled.get()) {
                 return;
@@ -299,9 +299,9 @@ class VoiceSessionHandler extends AbstractWebSocketHandler {
     }
 
     /** Starts hearing the sentence as it is spoken; null when that is not possible, which the turn copes with. */
-    private SpeechToText.Live listenLive() {
+    private SpeechToText.Live listenLive(Connection c) {
         try {
-            return listener.available() ? listener.listenLive(settings.get().languages(), voice.vocabulary()) : null;
+            return listener.available() ? listener.listenLive(settings.get().languages(), voice.vocabulary(c.who)) : null;
         } catch (RuntimeException e) {
             log.info("Live listening could not start: {}", e.toString());
             return null;
@@ -320,20 +320,20 @@ class VoiceSessionHandler extends AbstractWebSocketHandler {
     }
 
     /** The text of the sentence: from the live listening when it worked, otherwise from the whole recording. */
-    private String transcribe(byte[] audio, SpeechToText.Live live) {
+    private String transcribe(Connection c, byte[] audio, SpeechToText.Live live) {
         if (live == null) {
-            return whole(audio);
+            return whole(c, audio);
         }
         CompletableFuture<String> fromLive = CompletableFuture.supplyAsync(live::finish, VIRTUAL);
         String heard = within(fromLive, LIVE_PATIENCE_MS);
         if (heard == null && fromLive.isDone()) {
             log.info("Live listening gave no text, transcribing the recording instead");
-            return whole(audio);
+            return whole(c, audio);
         }
         if (heard == null) {
             log.info("Live listening is slow, transcribing the recording as well");
             try {
-                String text = whole(audio);
+                String text = whole(c, audio);
                 live.cancel();
                 return text;
             } catch (SpeechException e) {
@@ -344,14 +344,14 @@ class VoiceSessionHandler extends AbstractWebSocketHandler {
             }
         }
         if (compare) {
-            String text = whole(audio);
+            String text = whole(c, audio);
             log.info("Transcripts {}: live \"{}\", whole recording \"{}\"", heard.equals(text) ? "agree" : "differ", heard, text);
         }
         return heard;
     }
 
-    private String whole(byte[] audio) {
-        return listener.transcribe(audio, settings.get().languages(), voice.vocabulary());
+    private String whole(Connection c, byte[] audio) {
+        return listener.transcribe(audio, settings.get().languages(), voice.vocabulary(c.who));
     }
 
     /** What the future gives within the time, or null if it has not given anything (yet), failed, or gave null. */

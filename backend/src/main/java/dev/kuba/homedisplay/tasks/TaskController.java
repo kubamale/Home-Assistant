@@ -43,14 +43,16 @@ public class TaskController {
     }
 
     @GetMapping
-    public List<TaskService.TaskView> list(@RequestParam(defaultValue = "today") String scope) {
-        return "all".equals(scope) ? tasks.all() : tasks.today();
+    public List<TaskService.TaskView> list(@RequestParam(defaultValue = "today") String scope, Authentication authentication) {
+        long userId = ((CredentialPrincipal) authentication.getPrincipal()).requireUser();
+        return "all".equals(scope) ? tasks.all(userId) : tasks.today(userId);
     }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public TaskService.TaskView create(@Valid @RequestBody CreateTaskRequest request) {
-        return tasks.create(request.title(), request.dueDate());
+    public TaskService.TaskView create(@Valid @RequestBody CreateTaskRequest request, Authentication authentication) {
+        long userId = ((CredentialPrincipal) authentication.getPrincipal()).requireUser();
+        return tasks.create(userId, request.title(), request.dueDate());
     }
 
     @PatchMapping("/{id}")
@@ -61,14 +63,15 @@ public class TaskController {
         if (principal.kind() == CredentialKind.DISPLAY && !onlyDone) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "The door screen can only tick tasks");
         }
-        return tasks.update(id, request.title(), request.dueDate(), Boolean.TRUE.equals(request.clearDueDate()),
+        return tasks.update(principal.requireUser(), id, request.title(), request.dueDate(), Boolean.TRUE.equals(request.clearDueDate()),
                 request.done())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such task"));
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable long id) {
-        if (!tasks.delete(id)) {
+    public ResponseEntity<Void> delete(@PathVariable long id, Authentication authentication) {
+        long userId = ((CredentialPrincipal) authentication.getPrincipal()).requireUser();
+        if (!tasks.delete(userId, id)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No such task");
         }
         return ResponseEntity.noContent().build();

@@ -74,13 +74,13 @@ public class PairingService {
         return new Started(deviceCode, format(code.toString()), TTL.toSeconds());
     }
 
-    /** Approves the pairing with this code. Empty if the code is unknown or expired. */
-    public synchronized Optional<Credential> approve(String userCodeInput, String label) {
+    /** Approves the pairing with this code; the display will act as this person. Empty if the code is unknown or expired. */
+    public synchronized Optional<Credential> approve(String userCodeInput, String label, long userId) {
         prune();
         String normalized = normalize(userCodeInput);
         for (Pending candidate : pending.values()) {
             if (candidate.token() == null && constantTimeEquals(candidate.userCode(), normalized)) {
-                CredentialService.Issued issued = credentials.issue(CredentialKind.DISPLAY, label);
+                CredentialService.Issued issued = credentials.issue(CredentialKind.DISPLAY, label, userId);
                 pending.put(candidate.deviceCode(), new Pending(
                         candidate.deviceCode(), candidate.userCode(), candidate.expiresAt(), issued.token()));
                 return Optional.of(issued.credential());

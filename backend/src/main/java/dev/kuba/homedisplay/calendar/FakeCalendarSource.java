@@ -20,6 +20,11 @@ public class FakeCalendarSource implements CalendarSource {
     }
 
     @Override
+    public boolean sharedWithEveryone() {
+        return true;
+    }
+
+    @Override
     public List<CalendarEvent> eventsOn(LocalDate day, ZoneId zone) {
         return List.of(
                 new CalendarEvent("fake-1", "Trash pickup", true, null, null, day, null, "Home"),

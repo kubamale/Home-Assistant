@@ -1,5 +1,12 @@
 # PRD – Smart Door Display (MVP)
 
+> **Plan change (2026-11-12).** The hardware plan changed after this document was written: a **Raspberry Pi 5 at home is the server** (the app
+> in Docker, with the home agent beside it, talking to it on `127.0.0.1`), **Android tablets running a kiosk browser app are the wall
+> displays**, and phones reach the server from anywhere through **Tailscale or a Cloudflare Tunnel** (not yet chosen between the two; no router
+> ports are opened). Where this document says VPS, Pi 4, Waveshare touchscreen, a Pi as the door screen, a Pi kiosk or a USB speakerphone,
+> read it as **the earlier plan**. The current instructions are in [`deploy/README.md`](deploy/README.md) and the shopping list in
+> [`SHOPPING-LIST.md`](SHOPPING-LIST.md).
+
 Source: `smart-door-display-mvp.md` (24 Oct 2026). This document turns that plan into requirements I can build against, and **supersedes the source where they differ** (see "Changes from the source plan" below). Where the source is silent I mark an **Assumption**; change any of them and I will follow.
 
 Revision: 2026-10-24, v3. Backend moved from a home server to a VPS by default, the Raspberry Pi became the local gateway for home devices, and the first implementation exists (see section 13).
@@ -23,9 +30,9 @@ The Pi has two jobs: it **displays** the app, and it runs a small **home agent**
 
 ## 2. Users and context
 
-- **Primary user:** Kuba, single household, single user. No multi-user accounts in the MVP.
-- **Devices:** the phone (iPhone, Safari, PWA on Home Screen) and the door screen (Pi 4, Waveshare 1280×800 touch, Chromium kiosk).
-- **Network:** the phone works from anywhere over HTTPS. The Pi sits on home Wi-Fi and needs outbound internet only; no inbound ports.
+- **Primary user:** Kuba, single household. The MVP had a single user; **accounts for several people were added later** (each person has their own tasks, calendar, pinned lights, scenes and wall-display layout, on the same backend and the same home; one admin manages the home). The requirements below were written for one user and still describe what each person gets.
+- **Devices:** the phone (iPhone, Safari, PWA on Home Screen) and the wall displays. *(Plan changed 2026-11-12: the wall displays are Android tablets running the wall page in a kiosk browser app, and a Raspberry Pi 5 at home is the server with the home agent beside it. Earlier: the door screen was a Pi 4 with a Waveshare 1280×800 touchscreen and a Chromium kiosk.)*
+- **Network:** the phone works from anywhere over HTTPS. The server (the Pi 5) sits on the home network and needs outbound internet only; no inbound ports, because HTTPS comes from Tailscale or a Cloudflare Tunnel (not yet chosen). The tablets use the same HTTPS address, which the microphone also requires.
 - **Backend location:** a VPS by default. The same container also runs on a laptop or a home server because it only depends on its public URL and the agent's outbound connection.
 
 ## 3. Goals and non-goals

@@ -34,7 +34,7 @@ class QuickCommandsTest {
     }
 
     private static SceneView scene(long id, String name) {
-        return new SceneView(id, name, "custom", null, List.of());
+        return new SceneView(id, name, "custom", null, true, false, List.of());
     }
 
     private static final List<SceneView> SCENES = List.of(scene(1, "All off"), scene(2, "Movie"), scene(3, "Randeczka z Olcią"),

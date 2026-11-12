@@ -2,14 +2,17 @@ import { useConnection } from '../connection'
 import { COLOR_PRESETS, hsvCss } from '../color'
 import { useSetChannel } from '../hooks/data'
 import type { Channel, ChannelChange, Device } from '../types'
+import { StarIcon } from './Icons'
 import { Slider } from './Slider'
 
 /** The controls of one channel: power plus whatever it supports of brightness, white and colour. */
-export function ChannelControls({ device, channel, unavailable, showTitle }: {
+export function ChannelControls({ device, channel, unavailable, showTitle, favourite }: {
   device: Device
   channel: Channel
   unavailable: boolean
   showTitle: boolean
+  /** Shown as a star next to the switch when given: whether this light is a favourite, and how to change that. */
+  favourite?: { on: boolean; onToggle: () => void; disabled?: boolean }
 }) {
   const set = useSetChannel()
   const offline = useConnection() === 'reconnecting'
@@ -24,16 +27,30 @@ export function ChannelControls({ device, channel, unavailable, showTitle }: {
     <section className="channel" aria-label={channel.label}>
       <div className="channel-head">
         {showTitle ? <h3>{channel.label}</h3> : <span />}
-        <button
-          role="switch"
-          aria-checked={channel.on}
-          aria-label={`${showTitle ? channel.label : device.name} ${channel.on ? 'on' : 'off'}`}
-          className={channel.on ? 'switch on' : 'switch'}
-          disabled={unavailable || offline || set.isPending}
-          onClick={() => void send({ on: !channel.on }).catch(() => undefined)}
-        >
-          <span className="knob" />
-        </button>
+        <span className="channel-head-actions">
+          {favourite && (
+            <button
+              type="button"
+              className={favourite.on ? 'star on' : 'star'}
+              aria-pressed={favourite.on}
+              aria-label={favourite.on ? `Remove ${showTitle ? channel.label : device.name} from favourites` : `Add ${showTitle ? channel.label : device.name} to favourites`}
+              disabled={favourite.disabled}
+              onClick={favourite.onToggle}
+            >
+              <StarIcon filled={favourite.on} />
+            </button>
+          )}
+          <button
+            role="switch"
+            aria-checked={channel.on}
+            aria-label={`${showTitle ? channel.label : device.name} ${channel.on ? 'on' : 'off'}`}
+            className={channel.on ? 'switch on' : 'switch'}
+            disabled={unavailable || offline || set.isPending}
+            onClick={() => void send({ on: !channel.on }).catch(() => undefined)}
+          >
+            <span className="knob" />
+          </button>
+        </span>
       </div>
 
       {caps.brightness && (

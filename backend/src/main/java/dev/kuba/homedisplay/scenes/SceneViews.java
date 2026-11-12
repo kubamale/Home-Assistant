@@ -19,8 +19,13 @@ public final class SceneViews {
             Capabilities capabilities, ChannelChange settings) {
     }
 
-    /** @param quickAccess slot 1 to 4 on the dashboard, or null */
-    public record SceneView(long id, String name, String kind, Integer quickAccess, List<ActionView> actions) {
+    /**
+     * @param quickAccess slot 1 to 4 on the viewer's dashboard, or null
+     * @param shared      everyone's scene (the admin edits it); otherwise it is the viewer's own
+     * @param editable    whether the viewer may change or delete it
+     */
+    public record SceneView(long id, String name, String kind, Integer quickAccess, boolean shared, boolean editable,
+            List<ActionView> actions) {
     }
 
     public record SceneList(List<SceneView> scenes) {

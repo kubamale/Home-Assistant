@@ -28,6 +28,7 @@ import dev.kuba.homedisplay.scenes.SceneViews.ApplyResult;
 import dev.kuba.homedisplay.scenes.SceneViews.Failure;
 import dev.kuba.homedisplay.scenes.SceneViews.SceneView;
 import dev.kuba.homedisplay.stream.ChangePublisher;
+import dev.kuba.homedisplay.users.Viewer;
 
 @Service
 public class SceneService {
@@ -51,15 +52,18 @@ public class SceneService {
         this.changes = changes;
     }
 
+    /** The scenes this person sees: the shared ones and their own, with their own pins. */
     @Transactional(readOnly = true)
-    public List<SceneView> list() {
+    public List<SceneView> list(Viewer viewer) {
         Map<String, HomeDevice> byId = byId(deviceService.snapshot().devices());
-        List<QuickAccessItem> pinned = devices.quickAccess();
+        List<QuickAccessItem> pinned = devices.quickAccess(viewer.userId());
         Map<Long, List<SceneAction>> actions = scenes.actionsByScene();
-        return scenes.findAll().stream().map(scene -> view(scene, actions.getOrDefault(scene.id(), List.of()), byId, pinned)).toList();
+        return scenes.findVisible(viewer.userId()).stream()
+                .map(scene -> view(viewer, scene, actions.getOrDefault(scene.id(), List.of()), byId, pinned)).toList();
     }
 
-    private SceneView view(Scene scene, List<SceneAction> actions, Map<String, HomeDevice> byId, List<QuickAccessItem> pinned) {
+    private SceneView view(Viewer viewer, Scene scene, List<SceneAction> actions, Map<String, HomeDevice> byId,
+            List<QuickAccessItem> pinned) {
         int slot = pinned.indexOf(QuickAccessItem.scene(scene.id()));
         List<ActionView> views = actions.stream().map(a -> {
             HomeDevice device = byId.get(a.deviceId());
@@ -69,22 +73,27 @@ public class SceneService {
                     channel == null ? a.channel() : channel.label(), channel == null ? null : channel.capabilities(),
                     a.settings());
         }).toList();
-        return new SceneView(scene.id(), scene.name(), scene.kind(), slot < 0 ? null : slot + 1, views);
+        return new SceneView(scene.id(), scene.name(), scene.kind(), slot < 0 ? null : slot + 1, scene.shared(),
+                scene.editableBy(viewer.userId(), viewer.admin()), views);
     }
 
+    /** Creates a scene of the person's own, or a shared one ({@code shared}, admin only). */
     @Transactional
-    public SceneView create(String name, List<SceneAction> actions) {
+    public SceneView create(Viewer viewer, String name, List<SceneAction> actions, boolean shared) {
+        if (shared && !viewer.admin()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the admin can make a scene for everyone");
+        }
         validate(actions);
         rejectDuplicateName(name.trim(), -1);
-        Scene scene = scenes.insert(name.trim());
+        Scene scene = scenes.insert(name.trim(), shared ? null : viewer.userId());
         scenes.replaceActions(scene.id(), actions);
         changes.publish(ChangePublisher.HOME);
-        return one(scene.id());
+        return one(viewer, scene.id());
     }
 
     /** Creates a scene from the current settings of the chosen lights. */
     @Transactional
-    public SceneView capture(String name, List<LightRef> lights) {
+    public SceneView capture(Viewer viewer, String name, List<LightRef> lights, boolean shared) {
         if (lights.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Pick at least one light");
         }
@@ -99,7 +108,7 @@ public class SceneService {
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such channel: " + light.channel()));
             actions.add(new SceneAction(light.deviceId(), light.channel(), currentSettings(channel)));
         }
-        return create(name, actions);
+        return create(viewer, name, actions, shared);
     }
 
     /** The settings that reproduce what a light shows now: off, or on with its brightness and white or colour. */
@@ -119,8 +128,8 @@ public class SceneService {
 
     /** Replaces the name and actions. The built-in All off scene can only be renamed. */
     @Transactional
-    public SceneView update(long id, String name, List<SceneAction> actions) {
-        Scene scene = scenes.findById(id).orElseThrow(SceneService::notFound);
+    public SceneView update(Viewer viewer, long id, String name, List<SceneAction> actions) {
+        Scene scene = editable(viewer, id);
         rejectDuplicateName(name.trim(), id);
         if (scene.isAllOff()) {
             if (!actions.isEmpty()) {
@@ -132,30 +141,35 @@ public class SceneService {
         }
         scenes.rename(id, name.trim());
         changes.publish(ChangePublisher.HOME);
-        return one(id);
+        return one(viewer, id);
     }
 
     @Transactional
-    public void delete(long id) {
-        Scene scene = scenes.findById(id).orElseThrow(SceneService::notFound);
+    public void delete(Viewer viewer, long id) {
+        Scene scene = editable(viewer, id);
         if (scene.isAllOff()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The built-in scene cannot be deleted");
         }
         scenes.delete(id);
-        // Closing the gap a removed pin leaves keeps the slots 1..n.
-        devices.replaceQuickAccess(devices.quickAccess());
+        devices.compactQuickAccess(); // closing the gaps removed pins leave keeps everyone's slots 1..n
         changes.publish(ChangePublisher.HOME);
     }
 
-    /** The list must contain every existing scene exactly once. */
+    /**
+     * The list must contain every scene the person can edit exactly once (their own, and the shared ones for the admin).
+     * They take the places those scenes had, so other people's scenes stay where they are.
+     */
     @Transactional
-    public void reorder(List<Long> ids) {
-        List<Long> existing = scenes.findAll().stream().map(Scene::id).toList();
-        if (ids.size() != existing.size() || !new HashSet<>(ids).equals(new HashSet<>(existing))) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "List every scene exactly once");
+    public void reorder(Viewer viewer, List<Long> ids) {
+        List<Scene> mine = scenes.findVisible(viewer.userId()).stream()
+                .filter(s -> s.editableBy(viewer.userId(), viewer.admin())).toList();
+        Set<Long> existing = new HashSet<>(mine.stream().map(Scene::id).toList());
+        if (ids.size() != existing.size() || !new HashSet<>(ids).equals(existing)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "List every scene you can edit exactly once");
         }
+        List<Integer> places = mine.stream().map(Scene::position).sorted().toList();
         for (int i = 0; i < ids.size(); i++) {
-            scenes.setPosition(ids.get(i), i);
+            scenes.setPosition(ids.get(i), places.get(i));
         }
         changes.publish(ChangePublisher.HOME);
     }
@@ -164,8 +178,8 @@ public class SceneService {
      * Applies a scene: every action becomes a channel command. Actions for different devices run in
      * parallel, the actions of one device in order. A failed action is reported, the rest carry on.
      */
-    public ApplyResult apply(long id) {
-        Scene scene = scenes.findById(id).orElseThrow(SceneService::notFound);
+    public ApplyResult apply(Viewer viewer, long id) {
+        Scene scene = scenes.findVisible(viewer.userId(), id).orElseThrow(SceneService::notFound);
         if (!adapter.online()) {
             throw DeviceException.offline();
         }
@@ -276,8 +290,17 @@ public class SceneService {
         }
     }
 
-    private SceneView one(long id) {
-        return list().stream().filter(s -> s.id() == id).findFirst().orElseThrow(SceneService::notFound);
+    private SceneView one(Viewer viewer, long id) {
+        return list(viewer).stream().filter(s -> s.id() == id).findFirst().orElseThrow(SceneService::notFound);
+    }
+
+    /** A scene the person may change. One they may see but not change is a 403; one they may not see does not exist. */
+    private Scene editable(Viewer viewer, long id) {
+        Scene scene = scenes.findVisible(viewer.userId(), id).orElseThrow(SceneService::notFound);
+        if (!scene.editableBy(viewer.userId(), viewer.admin())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the admin can change a scene that is for everyone");
+        }
+        return scene;
     }
 
     private void rejectDuplicateName(String name, long exceptId) {

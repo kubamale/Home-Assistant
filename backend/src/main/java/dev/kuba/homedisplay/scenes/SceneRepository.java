@@ -18,8 +18,8 @@ import tools.jackson.databind.json.JsonMapper;
 @Repository
 public class SceneRepository {
 
-    private static final RowMapper<Scene> MAPPER = (rs, n) ->
-            new Scene(rs.getLong("id"), rs.getString("name"), rs.getInt("position"), rs.getString("kind"));
+    private static final RowMapper<Scene> MAPPER = (rs, n) -> new Scene(rs.getLong("id"), rs.getString("name"),
+            rs.getInt("position"), rs.getString("kind"), rs.getObject("user_id") == null ? null : rs.getLong("user_id"));
 
     private final JdbcClient jdbc;
     private final JsonMapper json;
@@ -29,24 +29,32 @@ public class SceneRepository {
         this.json = json;
     }
 
-    public List<Scene> findAll() {
-        return jdbc.sql("select * from scene order by position, id").query(MAPPER).list();
+    /** The scenes a person sees: the shared ones and their own. */
+    public List<Scene> findVisible(long userId) {
+        return jdbc.sql("select * from scene where user_id is null or user_id = ? order by position, id")
+                .param(userId).query(MAPPER).list();
+    }
+
+    /** A scene, if this person may see it. */
+    public Optional<Scene> findVisible(long userId, long id) {
+        return findById(id).filter(scene -> scene.visibleTo(userId));
     }
 
     public Optional<Scene> findById(long id) {
         return jdbc.sql("select * from scene where id = ?").param(id).query(MAPPER).optional();
     }
 
-    /** Whether another scene already has this name, ignoring case. */
+    /** Whether another scene already has this name, ignoring case. Names are unique across everyone's, so the assistant can tell them apart. */
     public boolean nameTaken(String name, long exceptId) {
         return jdbc.sql("select count(*) from scene where lower(name) = lower(?) and id <> ?")
                 .params(name, exceptId).query(Integer.class).single() > 0;
     }
 
-    public Scene insert(String name) {
+    /** Adds a scene at the end; {@code ownerId} null makes it shared. */
+    public Scene insert(String name, Long ownerId) {
         KeyHolder keys = new GeneratedKeyHolder();
-        jdbc.sql("insert into scene (name, position, kind) values (?, (select coalesce(max(position), -1) + 1 from scene), 'custom')")
-                .param(name).update(keys);
+        jdbc.sql("insert into scene (name, position, kind, user_id) values (?, (select coalesce(max(position), -1) + 1 from scene), 'custom', ?)")
+                .params(name, ownerId).update(keys);
         return findById(keys.getKey().longValue()).orElseThrow();
     }
 

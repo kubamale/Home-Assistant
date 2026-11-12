@@ -1,18 +1,23 @@
 # Home agent
 
-The home agent is a small Go program that runs on the Raspberry Pi (or on any machine on the home
-network, such as a laptop while developing). It is the **only** part of the system that talks to
+The home agent is a small Go program that runs on the **home server, a Raspberry Pi 5, next to the app** (or on any machine on
+the home network, such as a laptop while developing). It is the **only** part of the system that talks to
 lights. It finds them on the local network, reads their state, carries out the backend's commands, and
 reports back.
 
-The agent **connects out** to the backend over a WebSocket (`wss://…/agent/ws`). Nothing at home
-listens for connections from the internet, so the router needs no port forwarding and the backend can
-live on a VPS.
+The agent **connects out** to the backend over a WebSocket (`/agent/ws`). With the app and the agent on the same Pi, that is
+`ws://127.0.0.1:8080/agent/ws`, so `backendUrl` is `http://127.0.0.1:8080`. The agent also works against a backend somewhere else
+(`https://…`, over `wss`), and still needs no port forwarding at home, because it only connects out.
 
 ```
- Phone / wall screen ──HTTPS──▶ Backend (VPS) ◀──outbound WSS── Home agent ──LAN──▶ Yeelight lights
-                                                                (this module)
+ Phone / wall tablet ──HTTPS──▶ Tailscale or Cloudflare Tunnel ──▶ Backend (Docker, on the Pi)
+                                                                        ▲  ws://127.0.0.1:8080
+                                                                        │
+                                                               Home agent (this module) ──LAN──▶ Yeelight lights
 ```
+
+The agent runs **directly on the Pi, not in a Docker container**: lamp discovery uses multicast, which does not cross Docker's
+default network. The full setup of the Pi is in [`deploy/README.md`](../deploy/README.md).
 
 Where this fits in the whole system: [`ARCHITECTURE.md`](../ARCHITECTURE.md) (sections on the agent
 link and flows 6.13 to 6.15) and [`PRD.md`](../PRD.md) (the "Agent protocol" section). This document is
@@ -109,7 +114,7 @@ It produces static binaries (`CGO_ENABLED=0`, stripped) in `dist/`:
 
 | File | For |
 |---|---|
-| `dist/homedisplay-agent-arm64` | 64-bit Raspberry Pi OS (Pi 4 and newer, the recommended OS) |
+| `dist/homedisplay-agent-arm64` | 64-bit Raspberry Pi OS (Pi 4 and newer, including the Pi 5; the recommended OS) |
 | `dist/homedisplay-agent-armv7` | 32-bit Raspberry Pi OS |
 
 `uname -m` on the Pi tells you which: `aarch64` is arm64, `armv7l` is armv7.
@@ -125,7 +130,7 @@ scp ../deploy/pi/agent.json.example pi@<pi>:/tmp/agent.json
 # on the Pi
 sudo install -m 0755 /tmp/homedisplay-agent /usr/local/bin/homedisplay-agent
 sudo install -d /etc/homedisplay
-sudo install -m 0644 /tmp/agent.json /etc/homedisplay/agent.json   # edit: backendUrl, token, agentId (see the note below)
+sudo install -m 0644 /tmp/agent.json /etc/homedisplay/agent.json   # edit: token (backendUrl stays http://127.0.0.1:8080 when the app is on this Pi), agentId (see the note below)
 sudo cp /tmp/homedisplay-agent.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now homedisplay-agent
@@ -142,7 +147,7 @@ The simplest alternative is to pass the token with `Environment=AGENT_TOKEN=…`
 
 The unit (`deploy/pi/homedisplay-agent.service`) starts after the network is up, restarts always (5 s
 delay), and is sandboxed: no privileges, read-only system, no access to home directories. More Pi
-setup (kiosk browser, offline page): [`deploy/README.md`](../deploy/README.md).
+setup (the server, HTTPS, the wall tablets): [`deploy/README.md`](../deploy/README.md).
 
 To update the agent, build, copy the new binary over the old one, and `sudo systemctl restart homedisplay-agent`.
 

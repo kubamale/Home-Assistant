@@ -19,6 +19,18 @@ export interface Settings {
 export interface SessionInfo {
   role: 'user' | 'display'
   label: string
+  /** The person this phone or display acts as. */
+  userId: number
+  name: string
+  /** Manages the home itself: rooms, devices, location, voice, the agent and who has an account. */
+  admin: boolean
+}
+
+export interface AppUser {
+  id: number
+  name: string
+  admin: boolean
+  createdAt: string
 }
 
 export interface WeatherData {
@@ -161,6 +173,10 @@ export interface Scene {
   /** "all_off" is the built-in scene: it has no stored actions. */
   kind: 'custom' | 'all_off'
   quickAccess: number | null
+  /** Everyone's scene; otherwise it is the signed-in person's own. */
+  shared: boolean
+  /** Whether the signed-in person may change or delete it. */
+  editable: boolean
   actions: SceneAction[]
 }
 
@@ -203,6 +219,41 @@ export interface CredentialView {
   current: boolean
   /** The room a display is in; phones and the agent have none. */
   roomId: number | null
+  /** The person a phone or display belongs to. */
+  userId: number | null
+  userName: string | null
+}
+
+export type WidgetType = 'clock' | 'weather' | 'calendar' | 'tasks' | 'quickAccess'
+
+/** One card on a wall display. `count` is how many hours, events or tasks; `hour12` is for the clock. */
+export interface Widget {
+  type: WidgetType
+  count?: number | null
+  hour12?: boolean | null
+}
+
+export interface DisplayLayout {
+  columns: { widgets: Widget[] }[]
+  /** Whether the display listens for its wake word. */
+  voice: boolean
+  /** Whether the background moves with the weather (rain falls, clouds drift). Off suits a slow screen. */
+  motion: boolean
+}
+
+export interface DisplayConfig {
+  label: string
+  owner: { id: number; name: string }
+  layout: DisplayLayout
+}
+
+export interface CalendarConnection {
+  connected: boolean
+  /** Showing the calendar set up on the server (the admin's, until they connect their own). */
+  serverAccount: boolean
+  url: string | null
+  username: string | null
+  calendars: string[]
 }
 
 export interface PairStart {

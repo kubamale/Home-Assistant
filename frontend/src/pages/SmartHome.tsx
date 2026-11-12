@@ -1,41 +1,50 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { GearIcon } from '../components/Icons'
-import { CaptureDialog } from '../components/CaptureDialog'
+import { GearIcon, PlusIcon } from '../components/Icons'
 import { DeviceRow } from '../components/DeviceRow'
 import { DevicePanel } from '../components/DevicePanel'
-import { QuickAccessEditor } from '../components/QuickAccessEditor'
+import { FavouritesSheet } from '../components/FavouritesSheet'
+import { QuickAccessCard } from '../components/QuickAccessCard'
+import { RoomMenu } from '../components/RoomMenu'
 import { RoomSection } from '../components/RoomSection'
 import { SceneEditor } from '../components/SceneEditor'
+import { SceneMenu } from '../components/SceneMenu'
 import { ScenesSection } from '../components/ScenesSection'
 import { ConnectionNotice } from '../components/StatusBar'
 import { useConnection } from '../connection'
-import { useCreateRoom, useDevices, useReorderRooms, useRooms, useScenes } from '../hooks/data'
-import { groupDevices, moveItem, pinnedItems } from '../homeModel'
-import type { Scene } from '../types'
+import { useCreateRoom, useDevices, useIsAdmin, useRooms } from '../hooks/data'
+import { groupDevices } from '../homeModel'
+import type { Room, Scene } from '../types'
 
-/** The Home tab: devices grouped by room, with an edit mode for rooms, assignment, names and pins. */
+/**
+ * The Home tab. There is no edit mode: favourites and scenes have their own buttons, a device opens its own panel (where it
+ * becomes a favourite, or, for the admin, gets a room and a name), and a room has a "..." button for the admin.
+ */
 export function SmartHome() {
   const { data: snapshot, isPending } = useDevices()
   const { data: roomList } = useRooms()
   const connection = useConnection()
-  const reorder = useReorderRooms()
+  const admin = useIsAdmin()
   const createRoom = useCreateRoom()
-  const [edit, setEdit] = useState(false)
-  const [newRoom, setNewRoom] = useState('')
+  const [newRoom, setNewRoom] = useState<string | null>(null)
   const [panel, setPanel] = useState<string | null>(null)
+  const [favourites, setFavourites] = useState(false)
+  const [sceneMenu, setSceneMenu] = useState<Scene | null>(null)
   const [editor, setEditor] = useState<Scene | 'new' | null>(null)
-  const [capturing, setCapturing] = useState(false)
-  const { data: sceneList } = useScenes()
+  const [roomMenu, setRoomMenu] = useState<Room | null>(null)
 
   const devices = snapshot?.devices ?? []
   const rooms = roomList ?? []
   const agentDown = snapshot ? !snapshot.agentOnline : false
   const offline = connection === 'reconnecting'
   const grouped = groupDevices(devices, rooms)
-  const pinned = pinnedItems(devices, sceneList ?? [])
-  const roomIds = rooms.map((r) => r.id)
   const nothingYet = !isPending && devices.length === 0 && rooms.length === 0
+
+  const openFavourites = () => {
+    setPanel(null)
+    setSceneMenu(null)
+    setFavourites(true)
+  }
 
   return (
     <>
@@ -44,9 +53,6 @@ export function SmartHome() {
         <header className="phone-header">
           <h1>Home</h1>
           <div className="header-actions">
-            <button className={edit ? 'button compact primary' : 'button compact'} onClick={() => setEdit(!edit)}>
-              {edit ? 'Done' : 'Edit'}
-            </button>
             <Link className="icon-link" to="/settings" aria-label="Settings">
               <GearIcon />
             </Link>
@@ -62,70 +68,71 @@ export function SmartHome() {
           </section>
         )}
 
-        {edit && <QuickAccessEditor pinned={pinned} />}
+        <QuickAccessCard onEdit={openFavourites} onOpenDevice={setPanel} />
 
-        <ScenesSection manage={edit} pinned={pinned} onEdit={setEditor} onNew={() => setEditor('new')} onCapture={() => setCapturing(true)} />
+        <ScenesSection onMenu={setSceneMenu} onNew={() => setEditor('new')} />
 
         {grouped.unassigned.length > 0 && (
           <section className="card" aria-label="Unassigned">
-            <h2>Unassigned</h2>
-            {!edit && <p className="muted small">New devices show up here. Tap Edit to put them in a room.</p>}
+            <h2>Not in a room</h2>
+            {admin && <p className="muted small">New devices show up here. Open one and choose its room.</p>}
             <ul className="device-list">
               {grouped.unassigned.map((d) => (
-                <DeviceRow key={d.id} device={d} rooms={rooms} pinned={pinned} agentDown={agentDown} offline={offline} edit={edit} onOpen={setPanel} />
+                <DeviceRow key={d.id} device={d} agentDown={agentDown} offline={offline} onOpen={setPanel} />
               ))}
             </ul>
           </section>
         )}
 
-        {grouped.rooms.map((group, i) => (
-          <RoomSection
-            key={group.room.id}
-            group={group}
-            first={i === 0}
-            last={i === grouped.rooms.length - 1}
-            rooms={rooms}
-            pinned={pinned}
-            agentDown={agentDown}
-            offline={offline}
-            edit={edit}
-            onOpen={setPanel}
-            onMove={(delta) => reorder.mutate(moveItem(roomIds, i, delta))}
-          />
+        {grouped.rooms.map((group) => (
+          <RoomSection key={group.room.id} group={group} agentDown={agentDown} offline={offline} onOpen={setPanel} onMenu={admin ? () => setRoomMenu(group.room) : undefined} />
         ))}
-        {reorder.error && <p className="error small">{reorder.error.message}</p>}
 
-        {edit && (
-          <form
-            className="card add-room"
-            onSubmit={(e) => {
-              e.preventDefault()
-              const name = newRoom.trim()
-              if (name) createRoom.mutate(name, { onSuccess: () => setNewRoom('') })
-            }}
-          >
-            <h2>Add a room</h2>
-            <div className="inline-edit">
-              <input type="text" value={newRoom} maxLength={40} placeholder="Living room" aria-label="New room name" onChange={(e) => setNewRoom(e.target.value)} />
-              <button type="submit" className="button primary compact" disabled={createRoom.isPending || newRoom.trim() === ''}>
-                Add
-              </button>
-            </div>
-            {createRoom.error && <p className="error small">{createRoom.error.message}</p>}
-          </form>
-        )}
+        {admin &&
+          (newRoom === null ? (
+            <button type="button" className="add-room-button" onClick={() => setNewRoom('')}>
+              <PlusIcon />
+              Add a room
+            </button>
+          ) : (
+            <form
+              className="card add-room"
+              onSubmit={(e) => {
+                e.preventDefault()
+                const name = newRoom.trim()
+                if (name) createRoom.mutate(name, { onSuccess: () => setNewRoom(null) })
+              }}
+            >
+              <h2>Add a room</h2>
+              <div className="inline-edit">
+                <input type="text" value={newRoom} maxLength={40} placeholder="Living room" aria-label="New room name" autoFocus onChange={(e) => setNewRoom(e.target.value)} />
+                <button type="submit" className="button primary compact" disabled={createRoom.isPending || newRoom.trim() === ''}>
+                  Add
+                </button>
+                <button type="button" className="button compact" onClick={() => setNewRoom(null)}>
+                  Cancel
+                </button>
+              </div>
+              {createRoom.error && <p className="error small">{createRoom.error.message}</p>}
+            </form>
+          ))}
       </main>
-      {panel && <DevicePanel deviceId={panel} onClose={() => setPanel(null)} />}
-      {editor && <SceneEditor scene={editor === 'new' ? null : editor} onClose={() => setEditor(null)} />}
-      {capturing && (
-        <CaptureDialog
-          onClose={() => setCapturing(false)}
-          onCreated={(scene) => {
-            setCapturing(false)
-            setEditor(scene)
+
+      {panel && <DevicePanel deviceId={panel} onClose={() => setPanel(null)} onFavourites={openFavourites} />}
+      {favourites && <FavouritesSheet onClose={() => setFavourites(false)} />}
+      {sceneMenu && (
+        <SceneMenu
+          scene={sceneMenu}
+          onClose={() => setSceneMenu(null)}
+          onFavourites={openFavourites}
+          onEdit={() => {
+            setEditor(sceneMenu)
+            setSceneMenu(null)
           }}
         />
       )}
+      {editor && <SceneEditor scene={editor === 'new' ? null : editor} onClose={() => setEditor(null)} />}
+      {roomMenu && <RoomMenu room={roomMenu} rooms={rooms} onClose={() => setRoomMenu(null)} />}
     </>
   )
 }

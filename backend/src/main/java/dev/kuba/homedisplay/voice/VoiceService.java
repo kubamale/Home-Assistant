@@ -22,6 +22,7 @@ import dev.kuba.homedisplay.config.AppProperties;
 import dev.kuba.homedisplay.devices.DeviceService;
 import dev.kuba.homedisplay.rooms.RoomService;
 import dev.kuba.homedisplay.scenes.SceneService;
+import dev.kuba.homedisplay.users.Viewer;
 import dev.kuba.homedisplay.security.CredentialKind;
 import dev.kuba.homedisplay.security.CredentialPrincipal;
 import dev.kuba.homedisplay.security.CredentialService;
@@ -144,13 +145,13 @@ public class VoiceService {
      * Names the speaker is likely to say (devices, rooms, scenes), given to the listening service as spelling hints.
      * A hundred is as many as it uses well.
      */
-    public List<String> vocabulary() {
+    public List<String> vocabulary(CredentialPrincipal who) {
         java.util.LinkedHashSet<String> names = new java.util.LinkedHashSet<>();
         rooms.list().forEach(room -> names.add(room.name()));
         // Not the channel names ("Main", "Background"): they are everyday words, and as hints they make the listener turn
         // "the background light" into just "Background".
         devices.snapshot().devices().forEach(device -> names.add(device.name()));
-        scenes.list().forEach(scene -> names.add(scene.name()));
+        scenes.list(Viewer.of(who)).forEach(scene -> names.add(scene.name()));
         return names.stream().filter(n -> !n.isBlank()).limit(100).toList();
     }
 
@@ -197,7 +198,7 @@ public class VoiceService {
         if (plan == null) {
             return null;
         }
-        VoiceTools.Turn turn = new VoiceTools.Turn(who.kind(), conversation.catalog);
+        VoiceTools.Turn turn = new VoiceTools.Turn(who.kind(), Viewer.of(who), conversation.catalog);
         long start = System.nanoTime();
         ToolResult result = tools.execute(plan.call(), turn);
         long toolNanos = System.nanoTime() - start;
@@ -218,7 +219,7 @@ public class VoiceService {
     }
 
     private Reply ask(Conversation conversation, String text, CredentialPrincipal who, Long roomId, Instant now) {
-        VoiceTools.Turn turn = new VoiceTools.Turn(who.kind(), conversation.catalog);
+        VoiceTools.Turn turn = new VoiceTools.Turn(who.kind(), Viewer.of(who), conversation.catalog);
         long modelNanos = 0;
         long toolNanos = 0;
         String reply;
@@ -273,7 +274,7 @@ public class VoiceService {
     }
 
     private Conversation begin(CredentialPrincipal who) {
-        HomeCatalog catalog = new HomeCatalog(devices.snapshot().devices(), rooms.list(), scenes.list());
+        HomeCatalog catalog = new HomeCatalog(devices.snapshot().devices(), rooms.list(), scenes.list(Viewer.of(who)));
         AgentSession session = model.start(INSTRUCTIONS + catalog.prompt(), tools.specs(who.kind()));
         Conversation conversation = new Conversation(who.credentialId(), session, catalog, clock.instant());
         conversations.put(conversation.id, conversation);

@@ -14,6 +14,7 @@ import org.springframework.web.server.ResponseStatusException;
 import dev.kuba.homedisplay.rooms.RoomRepository;
 import dev.kuba.homedisplay.scenes.SceneRepository;
 import dev.kuba.homedisplay.stream.ChangePublisher;
+import dev.kuba.homedisplay.users.Viewer;
 
 @Service
 public class DeviceService {
@@ -39,12 +40,20 @@ public class DeviceService {
         this.changes = changes;
     }
 
-    /** Stored devices merged with live state. A stored device the agent does not list shows as unreachable. */
-    @Transactional(readOnly = true)
+    /** The devices without anyone's pins: for code that only needs the lights, such as scenes and the assistant. */
     public Snapshot snapshot() {
+        return snapshot(null);
+    }
+
+    /**
+     * Stored devices merged with live state, with the pins of this person ({@code null}: none). A stored device the
+     * agent does not list shows as unreachable.
+     */
+    @Transactional(readOnly = true)
+    public Snapshot snapshot(Long userId) {
         Map<String, Device> live = adapter.devices().stream()
                 .collect(Collectors.toMap(Device::id, Function.identity(), (a, b) -> a));
-        List<QuickAccessItem> pinned = repository.quickAccess();
+        List<QuickAccessItem> pinned = userId == null ? List.of() : repository.quickAccess(userId);
         List<HomeDevice> devices = repository.findAll().stream()
                 .map(stored -> homeDevice(stored, live.get(stored.id()), pinned)).toList();
         return new Snapshot(devices, adapter.online());
@@ -117,14 +126,13 @@ public class DeviceService {
         if (!repository.delete(id)) {
             throw DeviceException.notFound(id);
         }
-        // Closing the gaps removed pins leave keeps the slots 1..n.
-        repository.replaceQuickAccess(repository.quickAccess());
+        repository.compactQuickAccess(); // closing the gaps removed pins leave keeps everyone's slots 1..n
         changes.publish(ChangePublisher.HOME);
     }
 
-    /** Replaces the quick access slots with these channels, in order. */
+    /** Replaces this person's quick access slots with these lights and scenes, in order. */
     @Transactional
-    public void setQuickAccess(List<QuickAccessItem> items) {
+    public void setQuickAccess(Viewer viewer, List<QuickAccessItem> items) {
         if (items.size() > QUICK_ACCESS_SLOTS) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "At most " + QUICK_ACCESS_SLOTS + " can be pinned");
@@ -134,7 +142,7 @@ public class DeviceService {
         }
         for (QuickAccessItem item : items) {
             if (item.isScene()) {
-                if (scenes.findById(item.sceneId()).isEmpty()) {
+                if (scenes.findVisible(viewer.userId(), item.sceneId()).isEmpty()) {
                     throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No such scene");
                 }
                 continue;
@@ -145,7 +153,7 @@ public class DeviceService {
                 throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No such channel: " + item.channel());
             }
         }
-        repository.replaceQuickAccess(items);
+        repository.replaceQuickAccess(viewer.userId(), items);
         changes.publish(ChangePublisher.HOME);
     }
 }

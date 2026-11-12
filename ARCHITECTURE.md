@@ -1,5 +1,12 @@
 # Architecture – Smart Door Display (MVP)
 
+> **Plan change (2026-11-12).** The hardware plan changed after this document was written: a **Raspberry Pi 5 at home is the server** (the app
+> in Docker, with the home agent beside it, talking to it on `127.0.0.1`), **Android tablets running a kiosk browser app are the wall
+> displays**, and phones reach the server from anywhere through **Tailscale or a Cloudflare Tunnel** (not yet chosen between the two; no router
+> ports are opened). Where this document says VPS, Pi 4, Waveshare touchscreen, a Pi as the door screen, a Pi kiosk or a USB speakerphone,
+> read it as **the earlier plan**. The current instructions are in [`deploy/README.md`](deploy/README.md) and the shopping list in
+> [`SHOPPING-LIST.md`](SHOPPING-LIST.md).
+
 Companion to `PRD.md` (requirement IDs such as W2, T4, G2 refer to it) and `smart-door-display-mvp.md` (original plan, superseded where `PRD.md` says so). Diagrams are Mermaid and render on GitHub, in VS Code and in most Markdown viewers.
 
 Revision: 2026-10-24, v3. The backend runs on a VPS by default, and the Raspberry Pi hosts a home agent that is the only component that talks to local devices. Section 12 records what the first implementation settled.
@@ -730,46 +737,69 @@ Rules: the backend accepts one agent connection at a time (a new valid connectio
 
 ## 8. Deployment
 
+**Current plan (2026-11-12).** The server is a Raspberry Pi 5 at home; the wall displays are tablets. The earlier VPS-based plan is kept below for reference and is still supported by the software.
+
+```mermaid
+flowchart TB
+  subgraph PiBox["Raspberry Pi 5 at home (the server)"]
+    subgraph Compose["Docker Compose (docker-compose.pi.yml)"]
+      App["app container<br/>Spring Boot + built React assets<br/>127.0.0.1:8080, restart: unless-stopped"]
+      Vol[("volume: data<br/>SQLite database")]
+    end
+    Ingress["Tailscale Serve<br/>or Cloudflare Tunnel (cloudflared)<br/>HTTPS in, nothing open on the router"]
+    AgentSvc["Home agent<br/>systemd service, outside Docker<br/>backendUrl http://127.0.0.1:8080"]
+    Env[".env<br/>password hash, secret key, API keys"]
+  end
+  Lamps["Yeelight lamps<br/>same LAN, multicast discovery"]
+  Tablet["Wall tablets<br/>kiosk browser app, /wall"]
+  PhoneD["Phone<br/>PWA, anywhere"]
+
+  App --- Vol
+  Env --> App
+  Ingress -- "127.0.0.1:8080" --> App
+  AgentSvc -- "ws://127.0.0.1:8080" --> App
+  AgentSvc -- "LAN" --> Lamps
+  Tablet -- "HTTPS" --> Ingress
+  PhoneD -- "HTTPS" --> Ingress
+```
+
+- **The Pi is only a server.** It never draws a screen. The wall page, the sky background, the wake word and the microphone all run on the tablet.
+- **HTTPS is needed even at home**: browsers only allow the microphone and installing the app on `https://` or `localhost`, and the cookies are `Secure`. Tailscale Serve or a Cloudflare Tunnel provides a real certificate without opening a port. Which of the two is **not decided yet** (private network and an app on every device, versus a public address that is just a web link).
+- **The agent runs outside Docker, on the same Pi**, because lamp discovery uses multicast, which does not cross Docker's default network. It reaches the app on `127.0.0.1`, so lights keep working if the internet is down.
+- **Single app image:** the Vite build is copied into Spring's static resources, so there is one URL and no separate web server for the app.
+- **Storage:** an SSD, or a good microSD card; the database is written continuously. Back it up **off the Pi**.
+- **Not verified:** none of this has been tried on a Pi 5 or a tablet; see `deploy/README.md`, section 11.
+
+### The earlier plan: a VPS
+
 ```mermaid
 flowchart TB
   subgraph VPSBox["VPS, Linux"]
-    subgraph Compose["Docker Compose"]
+    subgraph Compose2["Docker Compose"]
       Caddy["caddy container<br/>HTTPS, automatic certificates<br/>ports 80 and 443"]
-      App["app container<br/>Spring Boot + built React assets<br/>restart: unless-stopped"]
-      Vol[("volume: data<br/>task database")]
+      App2["app container<br/>Spring Boot + built React assets"]
+      Vol2[("volume: data")]
     end
-    Env[".env or secrets file<br/>iCloud password, password hash, domain"]
-    Backup["Scheduled backup<br/>copy of the data volume to off-site storage"]
   end
-  subgraph PiBox["Raspberry Pi 4 at home"]
-    Chromium["Chromium kiosk<br/>starts on boot, opens https://domain/wall<br/>local offline page as fallback"]
-    AgentSvc["Home agent<br/>systemd service<br/>Go binary<br/>config file: backend URL and token"]
+  subgraph PiBox2["Raspberry Pi 4 at home"]
+    Chromium["Chromium kiosk<br/>opens https://domain/wall"]
+    AgentSvc2["Home agent<br/>systemd service"]
   end
-  Domain["Domain name<br/>DNS to the VPS"]
-  PhoneD["Phone<br/>PWA from Home Screen"]
-
-  Caddy --> App
-  App --- Vol
-  Env --> App
-  Vol --> Backup
-  Domain --> Caddy
+  Caddy --> App2
+  App2 --- Vol2
   Chromium -- "HTTPS" --> Caddy
-  AgentSvc -- "outbound WSS" --> Caddy
-  PhoneD -- "HTTPS" --> Caddy
+  AgentSvc2 -- "outbound WSS" --> Caddy
 ```
 
-- **Single app image:** the Vite build is copied into Spring's static resources, so there is one URL and no separate web server for the app. Caddy only terminates HTTPS and proxies.
-- **VPS firewall:** open only 80/443 (and SSH with key-only login, ideally restricted by IP). The home router needs no changes.
-- **Pi:** a systemd unit for the agent (restart on failure) and an autostart entry for Chromium kiosk; both start at boot. Avoid frequent disk writes on the SD card (logs to RAM or journald limits).
-- **Portability:** the same Compose file runs on a laptop or a home server for development; only the domain/proxy section differs.
-- **Dev setup:** during phase 3-4 you can run the backend on a laptop and point the Pi and phone at it before the VPS exists.
+- **VPS firewall:** open only 80/443 (and SSH with key-only login). The home router needs no changes. This setup is `docker-compose.yml` with `deploy/Caddyfile` (Appendix A of `deploy/README.md`); the Pi display is Appendix B.
+- **Portability:** the same image runs on a laptop, a VPS or a home server; only how it gets HTTPS differs.
 
 ## 9. Cross-cutting concerns
 
 | Concern | Approach |
 | --- | --- |
 | **Secrets** | Server env/secrets file loaded into typed config; agent token in the Pi's config file; tokens stored hashed; nothing logged, nothing sent to clients, nothing committed |
-| **Authentication** | Single-user password login with a hashed password and rate limiting; display token from one-time pairing; agent token; scope checked on every endpoint; revocation supported |
+| **Authentication** | Name and password login (the admin's password is the server's configured hash, others' are bcrypt hashes in the database) with rate limiting; display token from one-time pairing; agent token; scope checked on every endpoint; revocation supported |
 | **Transport** | HTTPS everywhere; agent uses WSS; SSE uses same-origin cookies or the display token header |
 | **Time and location** | One injected `Clock` and one timezone, read from the saved location setting (nothing hard-coded). Until a location is saved, the server's own timezone is the fallback and weather is off. "Today" is computed on the server in that timezone; midnight rollover (in that zone) triggers calendar and task view refresh. The timezone value is validated as an IANA zone on save |
 | **Observability** | Structured logs, `/api/health` for liveness (public: up/down only), an authenticated status view with per-source `lastSuccess`, `lastError`, agent online |
@@ -783,7 +813,7 @@ flowchart TB
 
 | Decision | Choice | Alternatives and reason |
 | --- | --- | --- |
-| Backend location | VPS by default, location-independent | Home server: needs hardware and a VPN for remote access; still supported because the agent connects out |
+| Backend location | **Raspberry Pi 5 at home (decided 2026-11-12)**; earlier: a VPS | The VPS needed a monthly cost and a domain; a home server needs hardware and a way in from outside (Tailscale or a Cloudflare Tunnel, not yet chosen). Both work because the agent connects to the backend over a WebSocket and the same image runs in either place |
 | Local device access | Pi home agent connecting out over WSS | Backend talking to the LAN: needs a VPN or open port when hosted away from home |
 | Agent link | WebSocket (bidirectional, one connection) | MQTT: adds a broker; polling: higher latency |
 | Agent runtime | Go, single static binary | Node.js: shares a language with the frontend but needs a runtime and more RAM; Spring Boot: too heavy for a 2 GB Pi sharing RAM with Chromium |
@@ -796,7 +826,7 @@ flowchart TB
 | Live updates | SSE | WebSocket is unnecessary for clients; commands go through REST |
 | Event style | "changed" signal, then refetch | Delta merging adds client complexity and drift risk |
 | Task storage | SQLite or H2 file | Postgres is overkill for one user |
-| Hosting | Docker Compose on the VPS | K3s: no benefit for one container |
+| Hosting | Docker Compose on the Pi (`docker-compose.pi.yml`) | K3s: no benefit for one container |
 | Frontend delivery | Static assets served by the backend | Separate web server or CDN is not needed at this scale |
 | Device organisation | Rooms, assignments, names and quick access stored in the backend database, keyed by the agent's stable device id | In the agent's config on the Pi: the agent has no UI and the phone must be able to edit it; as one JSON blob in `setting`: no integrity for dangling ids |
 | Live device state | Not stored; merged on read from the agent's reports | Persisting power and reachability: stale within seconds and a second source of truth |
@@ -815,7 +845,7 @@ flowchart TB
 
 ## 11. Open architecture questions
 
-1. VPS provider, region, size and domain (nothing chosen yet).
+1. How the server is reached from outside: Tailscale or a Cloudflare Tunnel (not yet chosen; a domain is only needed for Cloudflare). The VPS question is closed for now.
 2. ~~Display pairing UX~~ Decided: display-initiated, user chooses to scan the QR code or type the code (section 6.2). Still open: how the kiosk shows the pairing page before it holds a token (a route that is public but shows nothing sensitive).
 3. ~~Agent language~~ Decided: Go.
 4. ~~Yeelight addressing~~ Decided: discovery, not fixed IPs (section 6.12). Still open: whether the Pi's network passes multicast between the Pi and the bulbs; check early in phase 5.
@@ -837,6 +867,7 @@ flowchart TB
 - **Backend channels:** `V3__device_channels.sql` adds `device.channels` (JSON capabilities) and rebuilds `quick_access` with a `channel` column. `Device` carries `channels` and `states`; an agent that reports no channels gets a single power-only `main` channel. `ChannelChange.validate` implements the 400 rules; `AgentRegistry` merges reported channel states and applies commands optimistically only when a result carries no state.
 - **Device panel:** `DevicePanel` and `ChannelControls` are driven by each channel's capabilities. `Slider` commits on release and keeps the dragged value until the request and the refetch finish. Quick access tiles toggle on tap and open the panel on a 500 ms hold. On the wall the panel and the All devices view share the 30 s idle return.
 - **Yeelight lamp15 quirk:** on the Monitor Light Bar Pro (firmware 38) `bg_set_power "on"` and `bg_toggle` answer `ok` but leave the background light off, while `bg_set_power "off"` works and `bg_set_scene` switches it on. The driver therefore turns the background light on with `bg_set_scene` (when the bulb lists it in `support`), reading the light's last colour or white and brightness first and letting the change's own values override them; everything else uses the plain commands. Found by probing the real bar; the same driver code was run against it afterwards.
+- **Accounts as built (`V7__users.sql`):** several people share one backend and one home. `app_user` holds the people; the admin is row 1, created by the migration, and owns everything that existed before. A phone login or a display (`credential.user_id`) acts as one person, and the personal data is looked up by that id: tasks, quick access (primary key `(user_id, position)`), the calendar (`user_calendar`, password AES-GCM encrypted with `APP_SECRET_KEY`, one cache per person in `CalendarService`), personal scenes (`scene.user_id`, null = shared) and the layout of each display (`credential.layout`, validated by `DisplayLayout`). Rooms, devices, location, voice settings and shared scenes stay one per home. The admin's role is `ROLE_ADMIN` on a phone login only; a display never has it. Decisions: a *display's* owner is chosen when it is approved (and the admin can hand it over); the assistant (typed and spoken) acts as the owner of the display or phone it came from, so "my tasks" and "my calendar" are theirs; scene names stay unique across everyone's so the assistant can tell them apart; a calendar address must be `https` and not the server itself (the server makes that request with the person's password). Not built: per-person location or timezone, per-person voice settings, sharing a task list between people.
 - **Scenes as built:** `V4__scenes.sql` adds `scene` and `scene_action`, seeds the built-in `All off` row (`kind = all_off`) and rebuilds `quick_access` so a slot holds a light or a scene (a check enforces exactly one). `SceneService` validates actions against the stored capabilities, applies a scene by grouping actions per device and running each group on its own virtual thread (the groups in parallel, the actions of a device in order), and returns `{applied, failed[]}`; `capture` reads the merged device state (`currentSettings`: off, or on with brightness and either colour or white). Settings are stored as the JSON of a `ChannelChange`, so a setting left alone is simply absent.
 - **Scene UI:** `ScenesSection` (apply grid, or manage list with pin, order, edit, delete), `SceneEditor` (a block per light with a checkbox per setting, white and colour exclusive), `CaptureDialog` (name and which lights), and scene tiles in `QuickAccessCard`. The editing model (`sceneModel.ts`: drafts, include flags, conversion to the request) is pure and unit-tested.
 - **Visual design:** the interface follows Apple's iOS and Home app conventions. `styles.css` defines the tokens (system blue, green, red and orange, the grouped grey canvas and white or dark cards, translucent fills, hairline separators, continuous 20-26 px corners, the `-apple-system` font stack) for light and dark; the wall forces dark. Components: large page titles, small capitalised card headings, an iOS switch (green, white knob), thick Home-style sliders (the `--pf` custom property set by `Slider` fills the track up to the handle; the white and colour sliders keep their gradients), a segmented control, round Reminders-style task checks, Home-app tiles (grey when off, white when on, bulb or sparkle icon), a translucent tab bar and centred sheets with a blurred scrim. The weather card has a day or night sky. The wall avoids blur effects because they are expensive on a Raspberry Pi. Colours that must work in both themes go through tokens, so a theme change needs no component changes.

@@ -34,6 +34,22 @@ export function pinnedItems(devices: Device[], scenes: Scene[]): PinnedItem[] {
 export const toPinItems = (items: PinnedItem[]): PinItem[] =>
   items.map((i) => (i.kind === 'scene' ? { sceneId: i.scene.id } : { deviceId: i.device.id, channel: i.channel.id }))
 
+/** Whether two favourites are the same light or the same scene. */
+export const samePin = (a: PinItem, b: PinItem): boolean =>
+  a.sceneId !== undefined || b.sceneId !== undefined ? a.sceneId === b.sceneId : a.deviceId === b.deviceId && a.channel === b.channel
+
+export const isPinned = (items: PinItem[], item: PinItem): boolean => items.some((i) => samePin(i, item))
+
+/**
+ * Adds the item to the favourites, or takes it out if it is there already. When it would not fit (all slots are used) nothing
+ * changes and {@code full} says why, so the screen can explain instead of failing.
+ */
+export function togglePin(items: PinItem[], item: PinItem, limit = QUICK_ACCESS_SLOTS): { items: PinItem[]; full: boolean } {
+  if (isPinned(items, item)) return { items: items.filter((i) => !samePin(i, item)), full: false }
+  if (items.length >= limit) return { items, full: true }
+  return { items: [...items, item], full: false }
+}
+
 /** Whether a pin item is this light. */
 export const isLight = (item: PinItem, deviceId: string, channel: string) => item.deviceId === deviceId && item.channel === channel
 

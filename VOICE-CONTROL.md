@@ -1,5 +1,12 @@
 # Voice agent – design proposal (v2)
 
+> **Plan change (2026-11-12).** The hardware plan changed after this document was written: a **Raspberry Pi 5 at home is the server** (the app
+> in Docker, with the home agent beside it, talking to it on `127.0.0.1`), **Android tablets running a kiosk browser app are the wall
+> displays**, and phones reach the server from anywhere through **Tailscale or a Cloudflare Tunnel** (not yet chosen between the two; no router
+> ports are opened). Where this document says VPS, Pi 4, Waveshare touchscreen, a Pi as the door screen, a Pi kiosk or a USB speakerphone,
+> read it as **the earlier plan**. The current instructions are in [`deploy/README.md`](deploy/README.md) and the shopping list in
+> [`SHOPPING-LIST.md`](SHOPPING-LIST.md).
+
 Status: **partly built** (see the box below). Originally a proposal, revised 2026-10-24 after the goal was clarified: **an agent at the door that listens *and speaks*.** You ask it to switch lights, you ask it "what is the weather today?", and it answers out loud. It extends `PRD.md` and `ARCHITECTURE.md`; terms such as *channel*, *scene*, *agent* (the Pi program) and *quick access* are used as defined there. To avoid confusion, this document calls the new thing **the voice agent** (or "the assistant") and the Pi program **the home agent**.
 
 ## Where this stands (2026-10-29)
@@ -12,7 +19,7 @@ Status: **partly built** (see the box below). Originally a proposal, revised 202
 | **Speed** (2026-10-29): plain commands ("turn off the background light", "wyłącz wszystkie światła", a scene by name) are understood by strict rules, without the model, and answered by a remembered "Done." / "Gotowe."; the sentence is **heard while it is spoken** (Gemini Live), so the text is ready about 0.3 s after you stop. A plain command is done and heard about 1 s after the end of speech, from about 4 s. | Skipping the model's second call for compound commands (colour plus brightness still take 4 to 5 s), a shorter wait for silence in the browser (700 ms), and timing the real lamp, whose driver is untouched. |
 | **The wake word on the wall** (2026-10-29): the door screen has voice. It listens on the device for **"Hey Jarvis"** (openWakeWord's pre-trained model, run in the browser; nothing leaves the screen until it is heard), says a short "Yes?" (settable, or silent) if you pause, takes one sentence, and for 6 s after each answer takes the next without it; saying it over an answer interrupts. Sensitivity in Settings → Voice. Checked in a real browser with a synthetic voice, including recovery after the server went away. | Trying it on a Pi (load, echo, real voices; Polish speakers saying "Hey Jarvis" are the open question: a synthetic Polish pronunciation scored 0.14 against 0.99 for the English one), and a custom word. |
 | **Rooms** (2026-10-29): a display can be given a room; said to it, "the light" and "all the lights" mean that room's lights, "everywhere" the whole home, and the model is told where you are. | Two screens that hear the same wake word: only one should answer (matters once there is a wake word). Naming a room in a sentence is left to the model. |
-| | Everything about the Pi: the speakerphone, kiosk flags for the microphone and sound, echo behaviour on real hardware. |
+| | Everything about the tablet: its own microphone and speaker, echo behaviour on real hardware, and the kiosk app's permissions for the microphone and sound. *(Earlier plan: the Pi's speakerphone and kiosk flags.)* |
 
 **Checked against the real Gemini API (2026-10-27)** with one spoken sentence each way: the transcription model accepts the recording inline, and the streamed speech arrives as described in `backend/README.md` section 15. Hearing while speaking was checked on 2026-10-29 the same way. Not checked: Polish accuracy and naturalness with a real voice (`app.speech.compare-transcripts=true` logs both transcripts to judge it), and anything on the Pi.
 

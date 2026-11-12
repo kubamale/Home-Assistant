@@ -3,8 +3,8 @@
 The frontend is one React single-page app that serves **two different screens** from the same code:
 
 - the **phone app** (installable PWA): dashboard, Home tab (rooms, devices, scenes), settings;
-- the **wall display**: a fixed, no-scroll layout for the 10.1" touchscreen of the Raspberry Pi,
-  running in a Chromium kiosk.
+- the **wall display**: a fixed, no-scroll layout for a wall-mounted tablet running the page in a kiosk
+  browser app (designed for a 1280×800 touchscreen; the earlier plan was a Raspberry Pi with Chromium).
 
 It contains no business rules. The backend owns the data and the rules; this app shows the data,
 sends the user's commands, and refreshes itself when the backend says something changed.
@@ -83,14 +83,14 @@ quality gate.
 
 | Route | Screen | Who | Notes |
 |---|---|---|---|
-| `/login` | Password sign-in | anyone | Redirects back to where the user came from. |
+| `/login` | Sign-in (name and password) | anyone | A blank name is the admin. Redirects back to where the person came from. |
 | `/pair` | Pair this screen | an unpaired wall display | Shows a QR code and a code; polls until approved. |
 | `/wall` | Wall display | a paired display (or a signed-in user) | Redirects to `/pair` when nobody is signed in. |
 | `/` | Dashboard | user | Weather, quick access, calendar, tasks. |
 | `/home` | Home tab | user | Rooms, devices, scenes, with an Edit mode. |
 | `/assistant` | Assistant | user | Talk or type to the assistant: lights, weather, calendar, tasks. |
-| `/settings` | Settings | user | Location, phones and displays, home agent token, sign out. |
-| `/approve` | Add display | user | Approve a pairing code (opened by the QR code). |
+| `/settings` | Settings menu, and `/settings/...` pages | user | Everyone: account, my calendar, my displays (with the layout editor), phones. The admin also: location, voice, people, home agent. See "Settings" below. |
+| `/approve` | Add display | user | Approve a pairing code (opened by the QR code). The admin chooses whose display it is. |
 | anything else | | | Redirects to `/`. |
 
 Two gates (`RequireAuth`) protect the routes: one for "any signed-in client" (the wall), one for "user
@@ -102,7 +102,7 @@ in the page header.
 
 ### How a wall display gets signed in
 
-1. The Pi opens `/wall` → not signed in → redirected to `/pair`.
+1. The tablet's kiosk app opens `/wall` → not signed in → redirected to `/pair`.
 2. `Pair` calls `POST /api/auth/pair/start`, shows the QR code (a link to `/approve?code=…`) and the code,
    and polls every 2 s. An expired code is replaced automatically; network errors are retried.
 3. On the phone (signed in) the user scans the QR code, or opens **Settings → Add display** and types the
@@ -157,11 +157,11 @@ Main components:
 | `CalendarCard` | Today's events. All-day events first, as full-width rows labelled "All day". Finished events stay but are crossed out. |
 | `TasksCard` | Today's tasks. `editable` (phone, user only) adds the add form and delete buttons; the wall can only tick. |
 | `QuickAccessCard` | The pinned tiles (up to 4 lights or scenes). |
-| `QuickAccessEditor` | Pins and their order, in Edit mode. |
+| `FavouritesSheet`, `SceneMenu`, `RoomMenu`, `Sheet` | The Home tab's sheets: favourites, what can be done with a scene, with a room, and the shared panel they sit in. |
 | `RoomSection`, `DeviceRow`, `InlineEdit` | Devices by room; in Edit mode: assign room, rename, pin, forget. |
 | `DevicePanel`, `ChannelControls`, `Slider` | The sheet with every control of one device. |
 | `pages/Assistant.tsx`, `assistantModel.ts` | The chat screen and its pure helpers (bubbles, error wording, the 500 character limit). |
-| `ScenesSection`, `SceneEditor`, `CaptureDialog` | Scene buttons, management list, the editor and "save current lights as a scene". |
+| `ScenesSection`, `SceneEditor` | Scene buttons with a menu each, and the editor. |
 | `WallDevices` | The wall's "All devices" view (switching only). |
 | `ConnectionNotice`, `Stale` | "Reconnecting…" banner; "Updated 12 min ago" notes on cards. |
 | `Icons` | Small line icons. |
@@ -205,9 +205,9 @@ Main components:
 A single scrolling column: date heading, weather, **quick access**, calendar, tasks. Each card handles
 its own loading, empty, and stale states.
 
-### Quick access
+### Favourites (quick access)
 
-Up to four tiles, each a **light channel** or a **scene**, pinned from the Home tab.
+Up to four tiles, each a **light channel** or a **scene**. The app calls them **favourites**; the API and the code still say "quick access". They are shown at the top of the Home tab, on the dashboard and on the wall display. Add them from a light's panel (a star), from a scene's "..." menu, or from the Favourites editor.
 
 - Tap a light tile: toggles that channel. **Long-press (500 ms)** opens the device panel; the hold is
   detected on pointer events, and the click that follows a hold is suppressed so it does not also toggle.
@@ -215,23 +215,23 @@ Up to four tiles, each a **light channel** or a **scene**, pinned from the Home 
   seconds.
 - Tiles are disabled and say "Unavailable" when the agent is offline, the light is missing or unreachable,
   or the app has lost its connection.
-- With nothing pinned the phone explains how to pin; the wall shows nothing unless it has the
-  "All devices" button.
+- With none, the Home tab shows a dashed "Add your favourite lights and scenes" tile; the dashboard explains
+  how to add one; the wall shows nothing unless it has the "All devices" button.
 
 ### Home tab (`/home`)
 
-Devices grouped by room, plus an **Unassigned** group for new devices. **Edit** switches on the
-organising controls:
+There is no edit mode: everything is a tap on the thing itself, and each action has its own sheet (`components/Sheet.tsx`).
 
-- rooms: add, rename, delete, reorder (arrows);
-- per device: choose a room, rename, pin a channel to quick access, forget (for a missing device);
-- scenes: create, capture, edit, delete, reorder, pin.
+- **Favourites** (`QuickAccessCard` with an *Edit* button) at the top. *Edit* opens `FavouritesSheet`: four slots, each with move up, move down and remove, and an empty slot is a dashed "Add a favourite" that lists the lights and scenes that can be added. Every change is saved at once.
+- **Scenes** (`ScenesSection`): tap a tile to apply it. Each tile has a "..." button that opens `SceneMenu` (add to or remove from favourites, edit, move earlier or later in the list, delete with a confirmation), and the last tile, "New scene", opens the editor.
+- **Rooms and devices**: tapping a device's name opens its panel; the switch beside it turns it on or off. A device that is a favourite shows a star. New devices appear automatically and start under "Not in a room".
+- **The admin** also has a "..." button on each room (`RoomMenu`: rename, move up or down, delete) and an "Add a room" button at the bottom. Which room a device is in, and its name, are set in the device's panel.
 
-New devices appear automatically (the agent reports them) and start unassigned.
+If a star or a menu would add a fifth favourite, nothing changes and a note says the favourites are full, with a link to the Favourites editor. The rule is `togglePin` in `homeModel.ts`.
 
 ### Device panel
 
-A centred sheet with one section per channel: an iOS-style switch, then **Brightness**, **White**
+A sheet with one section per channel, each with a star that makes that light a favourite (phones only; a wall display cannot change favourites): an iOS-style switch, then **Brightness**, **White**
 (colour temperature, in Kelvin), **Colour** (hue), **Saturation**, and colour presets, each only if the
 channel supports it. Details that matter:
 
@@ -240,18 +240,16 @@ channel supports it. Details that matter:
   minute, so dragging must not send a command per pixel. The dragged value stays on screen until the
   request finishes, so the thumb never jumps back.
 - The slider matching the light's current colour mode is highlighted (White or Colour).
+- For the admin, a "This device" group at the bottom has the room, the name, and *Forget this device* for a device that has gone missing.
 
 ### Scenes
 
 - **Scene buttons** apply a scene. If some lights fail, the message names them and the reason; the rest
   of the scene still applied.
-- **Editor** (`SceneEditor`): for each light in the scene, each setting (power, brightness, white, colour)
-  has an *include* switch; only included settings are stored, and the rest are left alone when the scene is
-  applied. White and colour exclude each other (a light shows one). A light set to "off" stores only
-  "off".
-- **Capture** (`CaptureDialog`): choose lights, name it, and the scene is built from what they show
-  right now; the editor then opens for fine tuning.
-- The built-in **All off** scene can be renamed and pinned, not edited or deleted.
+- **Editor** (`SceneEditor`): a name, and the scene's lights as compact cards. Each card says what the scene will do to that light ("Off", "On, 40%, colour") and opens to change it: power is *On*, *Off* or *As is*, and brightness, white and colour each have a switch (white and colour exclude each other, because a light shows one). Only the settings that are switched on are stored; the rest are left alone when the scene is applied. A light set to off stores only "off".
+- **Starting a scene**: an empty scene offers *Use my lights as they are now* (every available light, as it is: `draftFromChannel`, which keeps off as off and keeps brightness and colour or white) or *Choose lights...* (a checklist showing each light's current state). *Add more lights* uses the same checklist, and a light added this way also starts as it is now. This replaces the old separate "save current lights" dialog.
+- The admin can make a new scene *For everyone*; everyone else's are their own.
+- The built-in **All off** scene can be renamed and made a favourite, not edited or deleted.
 
 The pure rules (`draftFromAction`, `draftToAction`, `toggleWhite`, …) are in `sceneModel.ts`.
 
@@ -309,26 +307,33 @@ handler. The microphone works on `https://` pages and on `localhost`, but on no 
 
 ### Settings (`/settings`)
 
-- **Home location:** search a place (server-side geocoding); saving it sets the weather location and the
-  timezone for the whole app.
-- **Phones and displays:** list, revoke, and **Add display** (leads to `/approve`). Each display has a **room** picker (`PUT /api/credentials/{id}/room`): said to that display, “the light” and “all the lights” mean that room's lights.
-- **Voice:** which languages you speak (hints for listening), the voice with a **Play sample** button (30 voices, a sentence
-  in English and one in Polish), an optional style such as "calm and friendly", and whether answers are spoken. A note says
-  that what you say goes to Google and that a paid key keeps it from being used for training.
-- **Home agent:** create an agent token for the Pi; it is shown **once**, so copy it right away.
-- **Account:** sign out (revokes this phone's session).
+Settings is a menu, like iOS Settings: `pages/Settings.tsx` is a short list of rows, each with a summary of what it holds, and each row opens its own page (`pages/settings/`). Nothing is edited on the menu, so it never grows into a long form, and what is saved is clear because each page saves one thing. A page has a back link to the menu and a large title. Rows, groups, fields and footnotes come from `pages/settings/SettingsLayout.tsx`; switches, steppers and the chevron from `components/Controls.tsx`.
+
+| Row on the menu | Page | Who | What is on it |
+| --- | --- | --- | --- |
+| Account | `/settings/account` | everyone | Name and role, change password (not for the admin, whose password is set on the server), sign out |
+| Appearance | `/settings/appearance` | everyone | The background: *Follows the weather*, *Calm* or *Plain*. Kept on this device |
+| My calendar | `/settings/calendar` | everyone | Status, and a form to connect your own CalDAV/iCloud account (app-specific password, optional calendar names, optional address). `PUT /api/calendar/connection` reads it once to check. Once connected the form is hidden behind *Change account*, and there is *Disconnect* |
+| Each display (and *Add a display*, which opens `/approve`) | `/settings/display/:id` | the owner; the admin for all | Room, owner (admin), last used, the layout editor, and *Remove this display* with a confirmation |
+| Phones | `/settings/phones` | everyone (their own; the admin sees all) | The signed-in phones, and signing one out |
+| Location | `/settings/location` | admin | The place and timezone, and a place search; choosing a result sets the weather and "today" for the whole home |
+| Voice | `/settings/voice` | admin | Voice and a sample, style, speak answers, languages, wake word sensitivity and the wake reply. Changes are a draft with a Save bar |
+| People | `/settings/people` | admin | The accounts. Tap a person to rename them, set a password or remove them; add a person below |
+| Home agent | `/settings/agent` | admin | Status, the agent tokens, and *Create an agent token* (shown once, so copy it right away) |
+
+The admin-only pages are behind `RequireAdmin` in `App.tsx`; anyone else is sent back to the menu. Pages with several fields that are saved together (the display layout, the voice settings) keep their changes as a draft and show a **Save bar** pinned to the bottom (*Unsaved changes: Undo, Save*), so nothing is half saved.
 
 ## 7. The wall display
 
-`pages/Wall.tsx` is built for a 10.1" 1280×800 touchscreen in a hallway.
+`pages/Wall.tsx` is built for a wall-mounted tablet, designed around a 1280×800 screen (other sizes scale with the screen height but have **not been tried**).
 
-- **Layout:** a fixed three-column grid, no scrolling: clock, date and weather on the left; today's
-  calendar (5 rows) in the middle; tasks (6 rows) and quick access on the right.
+- **Layout:** one to three equal columns, no scrolling, set by the display's owner. A display starts with the standard layout: clock, date and weather on the left; today's calendar (5 rows) in the middle; tasks (6 rows) and quick access on the right. The Wall page asks `GET /api/display/config` (`useDisplayConfig`) for the layout and shows the standard one until it arrives. Each card (**clock, weather, calendar, tasks, quick access**) can be on the screen once, in any column and order, with up to four per column; weather, calendar and tasks have a count (3 to 8 hours, 2 to 8 events, 2 to 8 tasks) and the clock can be 12-hour; the wake word can be switched off. What a display shows is its owner's: their calendar, tasks and pins.
+- **Arranging it** (`LayoutEditor.tsx`, on the display's page in Settings): a small picture of the screen, always dark like the real one, shows the columns and cards. Tap a card to select it; a panel below shows its setting (a stepper for hours, events or tasks, a switch for the 12-hour clock), four large move buttons (left, up, down, right, the last two into a new column when there is room) and *Remove*. *Add a card* shows chips for the cards that are off the screen, there is a switch for the wake word, and *Back to the standard layout*. Changes are a draft with a Save bar. The rules live in `displayLayout.ts` (pure functions, unit tested) and mirror the server's, which has the last word (`400` for a bad layout). When it is saved the server sends `display.changed` and the wall rearranges itself, with no reload. The same event refetches everything when a display is handed to someone else.
 - **Scaling:** `html.wall-mode` sets the root font size from the viewport height
   (`clamp(12px, 2.45vh, 30px)`), and all sizes use `rem`, so the whole layout scales with the screen.
 - **Always dark**, via `data-theme="dark"` on the root, which is removed again when leaving the page.
 - **Kiosk behaviour:** no text selection, no mouse cursor, large touch targets, and no blur effects
-  (they cost too much to draw on a Pi).
+  (they were planned for a slow Raspberry Pi; with tablets as displays this becomes a per-display choice, not done yet).
 - **All devices:** the quick access card has an "All devices ›" button that switches to a list of scenes and
   every device by room. It is **switching only**; renaming, rooms and pinning happen on the phone.
 - **Return to the dashboard:** after **30 s without a touch** (`useIdle`) in the devices view or a device
@@ -344,22 +349,51 @@ handler. The microphone works on `https://` pages and on `localhost`, but on no 
   stops an answer being spoken. A moment after the wake word, if you have not started talking, the screen says **"Yes?"** (or whatever is set in Settings → Voice, "After the wake word, say"; empty for silence) so you know it is listening. If you go straight on ("hey jarvis, turn off the light") nothing is said, so it never talks over you. It is hidden when the server has no speech or assistant key. The wake word's sensitivity comes
   from Settings → Voice. See "The wake word" below.
 
-How the Pi starts the kiosk is in [`deploy/README.md`](../deploy/README.md).
+How a tablet is set up as a display (the kiosk app, the microphone, pairing) is in [`deploy/README.md`](../deploy/README.md), section 7.
 
 ## 8. Design system
 
-`src/styles.css` is a single stylesheet, modelled on Apple's iOS and Home apps: grouped cards on a grey
-canvas, large titles, hairline separators, iOS-green switches, thick Home-style sliders, a segmented
+`src/styles.css` is a single stylesheet, modelled on Apple's iOS and Home apps: frosted-glass cards over a
+sky background, large titles, hairline separators, iOS-green switches, thick Home-style sliders, a segmented
 control, round check circles (as in Reminders), translucent tab bar, centred sheets.
+
+### Sky and glass
+
+- **The background is a sky** that follows the weather and the time of day. `SkyBackground` (mounted once in `App`) reads the
+  weather and sets two attributes on the root element, `data-sky` and `data-bg`; the gradients are in `styles.css` and are drawn
+  by `body::before` (fixed, behind everything). The rule that picks the sky is `skyFor()` in `sky.ts` (unit tested): clear,
+  cloudy (day or night), rain, snow, storm and fog; thin cloud counts as clear. Before the weather has arrived, or when it is not
+  set up, the sky follows the clock.
+- **Light mode is pastel and dark mode is deep**, for every sky, so the text colours never have to change with the weather. Each
+  sky has a light and a dark palette (`--sky-top`, `--sky-bottom`, `--sky-glow`), in a block for the system theme and one for
+  `data-theme="dark"`.
+- **Glass**: `.card`, `.group`, tiles, scene buttons, the assistant's bubbles and sheets use `--glass` (translucent) or
+  `--glass-strong` (sheets), `--glass-blur`, `--glass-border` and `--glass-shadow`. A light that is on is a warm amber glow
+  instead of white, so on and off are obvious at a glance; scenes are tinted with the accent colour. Text that sits directly on the
+  sky (section titles, footnotes, links) uses `--canvas-muted` and `--accent-canvas`, which stay readable on every sky.
+- **Choice**: Settings, Appearance, per device (`localStorage`, `hd.background`, `useBackgroundMode`): *Follows the weather*
+  (default), *Calm* (one fixed soft gradient), or *Plain* (the old grey). The wall display always follows the weather.
+- **Weather motion** (`SkyBackground.tsx`, the "weather motion" section of `styles.css`): soft movement behind the cards, only on the
+  weather background. Clear day: a faint cloud and a breathing sun glow; cloudy: three clouds drifting; rain: two layers of streaks;
+  snow: two layers of swaying flakes; storm: rain plus one soft flash now and then; fog: two pale bands; clear night: twinkling stars.
+  `SkyBackground` renders seven empty layers (`.weather-motion`), and CSS decides what each is for the current `data-sky`. Only
+  `transform` and `opacity` are animated, so it runs on the graphics chip without redrawing; falling layers are tiled patterns that
+  slide exactly one tile per loop, so there is no jump. It runs only when the root has `data-motion="on"`: a **phone** decides for
+  itself (Settings, Appearance; `localStorage` `hd.motion`, off by default to save battery, `useMotionPreference`), and a **wall
+  display** by its layout (`layout.motion`, on by default for new displays; the wall page sets `data-motion`). The system's reduce
+  motion setting (`prefers-reduced-motion`) always switches it off, which on Android includes "remove animations". **Measured on a
+  laptop browser only**: its cost on a tablet or a phone has not been measured.
+- **The wall draws no blur** (planned for a slow Raspberry Pi; tablets are faster, so this will become a per-display choice): under `html.wall-mode` every `backdrop-filter` is switched off and
+  the glass is a little more solid. Blur is also dropped, and glass made nearly solid, where the browser has no `backdrop-filter`
+  or the person asks for reduced transparency (`prefers-reduced-transparency`).
 
 - **Tokens** are CSS custom properties on `:root`: `--bg`, `--surface`, `--surface-2`, `--fill*`,
   `--text`, `--muted`, `--border`, `--accent`, `--danger`, `--ok`, `--radius`, `--ease`, …
 - **Light and dark** follow the system (`prefers-color-scheme`). `data-theme="light|dark"` on the root
-  forces one; the wall forces dark. Dark mode uses a charcoal canvas (`#1c1c1e`) with `#2c2c2e` cards, not
-  pure black.
+  forces one; the wall forces dark. Under the sky, `Plain` mode uses a charcoal canvas (`#1c1c1e`) in dark mode, not pure black.
 - **Sliders** paint their filled part from the CSS variable `--pf` (0 to 1) that `Slider` sets; the colour
   and white sliders override the track with their own gradients.
-- **Sheets** (device panel, scene editor, capture dialog) are centred with a scrim.
+- **Sheets** (device panel, scene editor, favourites, menus) are centred with a scrim.
 - **Motion** respects `prefers-reduced-motion`.
 - The file is organised in labelled sections (cards, weather, calendar, tasks, devices, quick access,
   settings, pairing, editing, sheets, sliders, scenes, tab bar, wall). Use the existing tokens and class
@@ -382,7 +416,7 @@ npm test            # vitest run
 npm run typecheck
 ```
 
-64 unit tests of the pure modules and the voice client: `homeModel.test.ts` (grouping, pinned items, availability, scene result
+Unit tests of the pure modules and the voice client: `displayLayout.test.ts` (moving, adding, removing cards and their limits), `homeModel.test.ts` (grouping, pinned items, availability, scene result
 text), `sceneModel.test.ts` (drafts to actions, white/colour exclusivity), `calendarRows.test.ts`
 (ordering and which rows are dropped), `format.test.ts` (time and relative-time formatting), `assistantModel.test.ts` (chat bubbles, error wording, status line), and in `src/voice/`: `vad.test.ts` (finding where a sentence starts and ends, learning the room's noise), `pcm.test.ts` (sample conversion, playback scheduling) `wakePipeline.test.ts` and `wakeDetector.test.ts` (the pipeline's arithmetic with fake models, the decision rules with a fake worker), `wakeModels.test.ts` (the **real models** on two short recordings in `src/voice/fixtures/`, compared step by step with openWakeWord's own scores) and `voiceClient.test.ts` (whole conversations driven with a fake microphone, connection and speaker: tap to talk, hands-free, interrupting, timeouts, a blocked microphone, a lost connection).
 

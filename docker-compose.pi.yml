@@ -1,0 +1,53 @@
+# The home server: the app on a Raspberry Pi 5 (or any small always-on machine at home).
+#
+# This file runs the app only and publishes it on the machine itself (127.0.0.1:8080). HTTPS comes from outside it,
+# from Tailscale Serve or from a Cloudflare Tunnel (see deploy/README.md, section 5), so there is no Caddy here and
+# no port is opened on your router. The home agent runs on the same machine, outside Docker (deploy/README.md, section 6),
+# and connects to http://127.0.0.1:8080.
+#
+# Copy .env.example to .env and fill it in, then:
+#   docker compose -f docker-compose.pi.yml up -d --build
+# With a Cloudflare Tunnel (set CLOUDFLARE_TUNNEL_TOKEN in .env first):
+#   docker compose -f docker-compose.pi.yml --profile cloudflare up -d --build
+
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    environment:
+      APP_PASSWORD_HASH: ${APP_PASSWORD_HASH:?set APP_PASSWORD_HASH in .env}
+      APP_SECRET_KEY: ${APP_SECRET_KEY:-}
+      APP_DEVICES_MODE: agent
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      APP_CALENDAR_MODE: ${APP_CALENDAR_MODE:-off}
+      APP_CALENDAR_CALDAV_USERNAME: ${CALDAV_USERNAME:-}
+      APP_CALENDAR_CALDAV_PASSWORD: ${CALDAV_PASSWORD:-}
+      APP_CALENDAR_CALDAV_CALENDARS: ${CALDAV_CALENDARS:-}
+    ports:
+      # Only this machine can reach the app directly: the agent, Tailscale Serve and the tunnel all run here.
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/8080' || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+  # Only with --profile cloudflare. The tunnel connects out to Cloudflare, which serves your domain over HTTPS and
+  # passes the requests on to the app. The public hostname and its target (http://app:8080) are set in the Cloudflare
+  # dashboard, where the tunnel and its token are created.
+  cloudflared:
+    profiles: ["cloudflare"]
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    depends_on:
+      - app
+
+volumes:
+  data:

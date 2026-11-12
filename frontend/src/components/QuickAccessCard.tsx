@@ -14,10 +14,12 @@ const LONG_PRESS_MS = 500
  * is pinned. The door screen passes onAllDevices to get an "All devices" button; without that and
  * without pins it shows nothing.
  */
-export function QuickAccessCard({ hint, onAllDevices, onOpenDevice }: {
+export function QuickAccessCard({ hint, onAllDevices, onOpenDevice, onEdit }: {
   hint?: boolean
   onAllDevices?: () => void
   onOpenDevice?: (deviceId: string) => void
+  /** Shows an Edit button (the Home tab): opens the favourites. Without favourites it explains how to add one instead. */
+  onEdit?: () => void
 }) {
   const { data, isPending } = useDevices()
   const { data: rooms } = useRooms()
@@ -44,35 +46,51 @@ export function QuickAccessCard({ hint, onAllDevices, onOpenDevice }: {
       All devices ›
     </button>
   )
+  const editButton = onEdit && (
+    <button className="button compact all-devices" onClick={onEdit}>
+      Edit
+    </button>
+  )
 
   if (!isPending && pinned.length === 0) {
     if (allDevices) {
       return (
-        <section className="card quick" aria-label="Quick access">
+        <section className="card quick" aria-label="Favourites">
           <h2>
-            <span>Quick access</span>
+            <span>Favourites</span>
             {allDevices}
           </h2>
-          <p className="muted">Nothing pinned yet.</p>
+          <p className="muted">Nothing here yet.</p>
+        </section>
+      )
+    }
+    if (onEdit) {
+      return (
+        <section className="card quick" aria-label="Favourites">
+          <h2>Favourites</h2>
+          <button type="button" className="favourites-empty" onClick={onEdit}>
+            <span>Add your favourite lights and scenes</span>
+            <small>They show up here, on your dashboard and on your wall display.</small>
+          </button>
         </section>
       )
     }
     if (!hint) return null
     return (
-      <section className="card quick" aria-label="Quick access">
-        <h2>Quick access</h2>
+      <section className="card quick" aria-label="Favourites">
+        <h2>Favourites</h2>
         <p className="muted">
-          Pin up to 4 lights from the <Link to="/home">Home</Link> tab to switch them from here.
+          Add up to 4 lights or scenes as favourites on the <Link to="/home">Home</Link> tab to switch them from here.
         </p>
       </section>
     )
   }
 
   return (
-    <section className="card quick" aria-label="Quick access">
+    <section className="card quick" aria-label="Favourites">
       <h2>
-        <span>Quick access</span>
-        {allDevices}
+        <span>Favourites</span>
+        {editButton ?? allDevices}
       </h2>
       {isPending && <p className="muted">Looking for devices…</p>}
       <div className="quick-grid">

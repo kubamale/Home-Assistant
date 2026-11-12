@@ -1,4 +1,4 @@
-import { addableLights, describeAction, draftForLight, draftFromAction, draftToAction, hasSettings, toggleColor, toggleWhite } from './sceneModel'
+import { addableLights, describeAction, draftForLight, draftFromAction, draftFromChannel, draftToAction, hasSettings, summarizeDraft, toggleColor, toggleWhite } from './sceneModel'
 import type { Channel, Device, SceneAction } from './types'
 
 const caps = { brightness: true, colorTemp: { min: 1700, max: 6500 }, color: true }
@@ -61,5 +61,42 @@ describe('scene drafts', () => {
     expect(describeAction(action({ on: false }))).toBe('off')
     expect(describeAction(action({ on: true, brightness: 30, hue: 1, saturation: 1 }))).toBe('on, 30%, colour')
     expect(describeAction(action({ colorTemp: 3000 }))).toBe('3000 K')
+  })
+})
+
+
+describe('a scene that starts from the lights as they are', () => {
+  const bar: Device = {
+    id: 'bar', name: 'Bar', reportedName: 'Bar', type: 'yeelight', roomId: null, power: true, reachable: true, present: true,
+    updatedAt: null, lastSeenAt: '2026-10-24T11:00:00Z', channels: [],
+  }
+  const live = (over: Partial<Channel>): Channel => ({ ...channel('main'), ...over })
+
+  it('keeps a light that is off as off, and nothing else', () => {
+    const draft = draftFromChannel(bar, live({ on: false }))
+    expect(draftToAction(draft).settings).toEqual({ on: false })
+    expect(summarizeDraft(draft)).toBe('Off')
+  })
+
+  it('keeps brightness and colour for a light that shows colour', () => {
+    const draft = draftFromChannel(bar, live({ on: true, brightness: 40, hue: 120, saturation: 70, colorMode: 'color' }))
+    expect(draftToAction(draft).settings).toEqual({ on: true, brightness: 40, hue: 120, saturation: 70 })
+    expect(summarizeDraft(draft)).toBe('On, 40%, colour')
+  })
+
+  it('keeps white for a light that shows white', () => {
+    const draft = draftFromChannel(bar, live({ on: true, brightness: 80, colorTemp: 3000, colorMode: 'temperature' }))
+    expect(draftToAction(draft).settings).toEqual({ on: true, brightness: 80, colorTemp: 3000 })
+    expect(summarizeDraft(draft)).toBe('On, 80%, 3000 K')
+  })
+
+  it('does not include what the light cannot do', () => {
+    const plain = { brightness: false, colorTemp: null, color: false }
+    const draft = draftFromChannel(bar, live({ capabilities: plain, on: true, brightness: null, colorTemp: null, hue: null, saturation: null, colorMode: null }))
+    expect(draftToAction(draft).settings).toEqual({ on: true })
+  })
+
+  it('describes a draft that changes nothing', () => {
+    expect(summarizeDraft({ ...draftForLight(bar, channel('main')), includePower: false })).toBe('No change')
   })
 })

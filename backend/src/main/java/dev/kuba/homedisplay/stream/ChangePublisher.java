@@ -9,6 +9,8 @@ public interface ChangePublisher {
     String WEATHER = "weather.changed";
     String CALENDAR = "calendar.changed";
     String SETTINGS = "settings.changed";
+    /** A display's layout or owner changed. */
+    String DISPLAY = "display.changed";
 
     void publish(String event);
 }

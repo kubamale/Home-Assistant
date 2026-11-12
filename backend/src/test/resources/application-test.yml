@@ -10,6 +10,7 @@ spring:
 app:
   auth:
     password: testpass
+    secret-key: test-secret-key-for-the-calendar-passwords
     secure-cookies: false
   calendar:
     mode: fake

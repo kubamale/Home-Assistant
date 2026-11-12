@@ -30,12 +30,12 @@ public class TaskService {
     }
 
     /**
-     * Today's list: open tasks that are undated or due today or earlier, plus tasks completed today
+     * This person's list for today: open tasks that are undated or due today or earlier, plus tasks completed today
      * (so a ticked task stays visible until the day ends).
      */
-    public List<TaskView> today() {
+    public List<TaskView> today(long userId) {
         LocalDate today = time.today();
-        return repository.findAll().stream()
+        return repository.findAll(userId).stream()
                 .filter(t -> t.done()
                         ? t.completedAt() != null && t.completedAt().atZone(time.zone()).toLocalDate().equals(today)
                         : t.dueDate() == null || !t.dueDate().isAfter(today))
@@ -43,37 +43,37 @@ public class TaskService {
                 .toList();
     }
 
-    /** Everything that is still open or was completed today, including future tasks. */
-    public List<TaskView> all() {
+    /** Everything of this person's that is still open or was completed today, including future tasks. */
+    public List<TaskView> all(long userId) {
         LocalDate today = time.today();
-        return repository.findAll().stream()
+        return repository.findAll(userId).stream()
                 .filter(t -> !t.done()
                         || (t.completedAt() != null && t.completedAt().atZone(time.zone()).toLocalDate().equals(today)))
                 .map(t -> view(t, today))
                 .toList();
     }
 
-    public TaskView create(String title, LocalDate dueDate) {
-        Task task = repository.insert(title.trim(), dueDate, clock.instant());
+    public TaskView create(long userId, String title, LocalDate dueDate) {
+        Task task = repository.insert(userId, title.trim(), dueDate, clock.instant());
         changes.publish(ChangePublisher.TASKS);
         return view(task, time.today());
     }
 
     /** Applies the given changes; null fields are left untouched ({@code clearDueDate} removes the date). */
-    public Optional<TaskView> update(long id, String title, LocalDate dueDate, boolean clearDueDate, Boolean done) {
-        return repository.findById(id).map(existing -> {
+    public Optional<TaskView> update(long userId, long id, String title, LocalDate dueDate, boolean clearDueDate, Boolean done) {
+        return repository.findById(userId, id).map(existing -> {
             String newTitle = title != null ? title.trim() : existing.title();
             LocalDate newDue = clearDueDate ? null : dueDate != null ? dueDate : existing.dueDate();
             boolean newDone = done != null ? done : existing.done();
             var completedAt = newDone ? (existing.done() ? existing.completedAt() : clock.instant()) : null;
-            repository.update(id, newTitle, newDue, newDone, completedAt);
+            repository.update(userId, id, newTitle, newDue, newDone, completedAt);
             changes.publish(ChangePublisher.TASKS);
-            return view(repository.findById(id).orElseThrow(), time.today());
+            return view(repository.findById(userId, id).orElseThrow(), time.today());
         });
     }
 
-    public boolean delete(long id) {
-        boolean deleted = repository.delete(id);
+    public boolean delete(long userId, long id) {
+        boolean deleted = repository.delete(userId, id);
         if (deleted) {
             changes.publish(ChangePublisher.TASKS);
         }

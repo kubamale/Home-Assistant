@@ -3,6 +3,7 @@ package dev.kuba.homedisplay.devices;
 import java.util.List;
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -13,6 +14,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import dev.kuba.homedisplay.security.CredentialPrincipal;
+import dev.kuba.homedisplay.users.Viewer;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -52,8 +55,8 @@ public class DeviceController {
     }
 
     @GetMapping("/devices")
-    public DeviceService.Snapshot list() {
-        return devices.snapshot();
+    public DeviceService.Snapshot list(Authentication authentication) {
+        return devices.snapshot(((CredentialPrincipal) authentication.getPrincipal()).requireUser());
     }
 
     @PostMapping("/devices/{id}/power")
@@ -81,8 +84,8 @@ public class DeviceController {
     }
 
     @PutMapping("/quick-access")
-    public ResponseEntity<Void> setQuickAccess(@Valid @RequestBody QuickAccessRequest request) {
-        devices.setQuickAccess(request.items().stream().map(PinRequest::toItem).toList());
+    public ResponseEntity<Void> setQuickAccess(@Valid @RequestBody QuickAccessRequest request, Authentication authentication) {
+        devices.setQuickAccess(Viewer.of((CredentialPrincipal) authentication.getPrincipal()), request.items().stream().map(PinRequest::toItem).toList());
         return ResponseEntity.noContent().build();
     }
 }

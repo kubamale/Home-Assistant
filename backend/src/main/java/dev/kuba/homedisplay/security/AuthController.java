@@ -16,6 +16,8 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
 import dev.kuba.homedisplay.config.AppProperties;
+import dev.kuba.homedisplay.users.AppUser;
+import dev.kuba.homedisplay.users.UserService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -28,25 +30,27 @@ public class AuthController {
     /** A paired door screen should not need to be paired again. */
     private static final Duration DISPLAY_COOKIE_AGE = Duration.ofDays(365 * 5);
 
-    private final PasswordVerifier passwords;
+    private final UserService users;
     private final CredentialService credentials;
     private final PairingService pairing;
     private final LoginRateLimiter limiter;
     private final AppProperties props;
 
-    public AuthController(PasswordVerifier passwords, CredentialService credentials, PairingService pairing,
+    public AuthController(UserService users, CredentialService credentials, PairingService pairing,
             LoginRateLimiter limiter, AppProperties props) {
-        this.passwords = passwords;
+        this.users = users;
         this.credentials = credentials;
         this.pairing = pairing;
         this.limiter = limiter;
         this.props = props;
     }
 
-    public record LoginRequest(@NotBlank @Size(max = 200) String password) {
+    /** {@code name} may be left out to sign in as the admin, which is how an installation with one password signs in. */
+    public record LoginRequest(@Size(max = 40) String name, @NotBlank @Size(max = 200) String password) {
     }
 
-    public record SessionInfo(String role, String label) {
+    /** {@code name} is the person this client acts as (none for the agent); {@code admin} says they manage the home. */
+    public record SessionInfo(String role, String label, Long userId, String name, boolean admin) {
     }
 
     public record PairStartResponse(String deviceCode, String userCode, String approvePath, long expiresIn,
@@ -56,26 +60,27 @@ public class AuthController {
     public record PairPollResponse(String status) {
     }
 
-    public record PairApproveRequest(@NotBlank @Size(max = 32) String userCode, @Size(max = 60) String label) {
+    /** {@code userId} is the person the display will belong to; left out it is the one approving. */
+    public record PairApproveRequest(@NotBlank @Size(max = 32) String userCode, @Size(max = 60) String label, Long userId) {
     }
 
-    public record PairApproveResponse(String id, String label) {
+    public record PairApproveResponse(String id, String label, Long userId, String userName) {
     }
 
     @PostMapping("/login")
     public ResponseEntity<SessionInfo> login(@Valid @RequestBody LoginRequest request, HttpServletRequest http) {
         String key = "login:" + http.getRemoteAddr();
         limiter.check(key);
-        if (!passwords.matches(request.password())) {
+        AppUser user = users.authenticate(request.name(), request.password()).orElseGet(() -> {
             limiter.failure(key);
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Wrong password");
-        }
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Wrong name or password");
+        });
         limiter.success(key);
-        CredentialService.Issued issued = credentials.issue(CredentialKind.USER, userAgentLabel(http));
+        CredentialService.Issued issued = credentials.issue(CredentialKind.USER, userAgentLabel(http), user.id());
         Duration maxAge = Duration.ofDays(props.auth().sessionDays());
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, AuthCookies.session(issued.token(), maxAge, props).toString())
-                .body(new SessionInfo("user", issued.credential().label()));
+                .body(new SessionInfo("user", issued.credential().label(), user.id(), user.name(), user.admin()));
     }
 
     @PostMapping("/logout")
@@ -90,7 +95,8 @@ public class AuthController {
     @GetMapping("/me")
     public SessionInfo me(Authentication authentication) {
         CredentialPrincipal principal = (CredentialPrincipal) authentication.getPrincipal();
-        return new SessionInfo(principal.kind().dbValue(), principal.label());
+        String name = principal.userId() == null ? null : users.find(principal.userId()).map(AppUser::name).orElse(null);
+        return new SessionInfo(principal.kind().dbValue(), principal.label(), principal.userId(), name, principal.admin());
     }
 
     @PostMapping("/pair/start")
@@ -121,11 +127,17 @@ public class AuthController {
         String key = "approve:" + principal.credentialId();
         limiter.check(key);
         String label = request.label() == null || request.label().isBlank() ? "Door screen" : request.label().trim();
-        Credential credential = pairing.approve(request.userCode(), label).orElseGet(() -> {
+        long owner = request.userId() == null ? principal.requireUser() : request.userId();
+        if (owner != principal.requireUser() && !principal.admin()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You can only add a display for yourself");
+        }
+        AppUser user = users.find(owner)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        Credential credential = pairing.approve(request.userCode(), label, user.id()).orElseGet(() -> {
             limiter.failure(key);
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown or expired code");
         });
-        return new PairApproveResponse(credential.id(), credential.label());
+        return new PairApproveResponse(credential.id(), credential.label(), user.id(), user.name());
     }
 
     private static java.util.Optional<CredentialPrincipal> currentPrincipal(Authentication authentication) {

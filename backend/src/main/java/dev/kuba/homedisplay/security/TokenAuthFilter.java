@@ -1,7 +1,7 @@
 package dev.kuba.homedisplay.security;
 
 import java.io.IOException;
-import java.util.List;
+import java.util.ArrayList;
 
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -35,9 +35,16 @@ public class TokenAuthFilter extends OncePerRequestFilter {
         String token = extractToken(request);
         if (token != null) {
             credentials.authenticate(token).ifPresent(credential -> {
-                var principal = new CredentialPrincipal(credential.id(), credential.kind(), credential.label());
-                var auth = UsernamePasswordAuthenticationToken.authenticated(
-                        principal, null, List.of(new SimpleGrantedAuthority(credential.kind().authority())));
+                // Only a phone login can manage the home; a display never does, even one that belongs to the admin.
+                boolean admin = credential.admin() && credential.kind() == CredentialKind.USER;
+                var principal = new CredentialPrincipal(credential.id(), credential.kind(), credential.label(),
+                        credential.userId(), admin);
+                var authorities = new ArrayList<SimpleGrantedAuthority>();
+                authorities.add(new SimpleGrantedAuthority(credential.kind().authority()));
+                if (admin) {
+                    authorities.add(new SimpleGrantedAuthority("ROLE_ADMIN"));
+                }
+                var auth = UsernamePasswordAuthenticationToken.authenticated(principal, null, authorities);
                 SecurityContextHolder.getContext().setAuthentication(auth);
             });
         }

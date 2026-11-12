@@ -76,20 +76,32 @@ public class DeviceRepository {
         return jdbc.sql("delete from device where id = ?").param(id).update() > 0;
     }
 
-    /** The pinned lights and scenes in slot order (slot 1 first). */
-    public List<QuickAccessItem> quickAccess() {
-        return jdbc.sql("select device_id, channel, scene_id from quick_access order by position")
+    /** One person's pinned lights and scenes in slot order (slot 1 first). */
+    public List<QuickAccessItem> quickAccess(long userId) {
+        return jdbc.sql("select device_id, channel, scene_id from quick_access where user_id = ? order by position")
+                .param(userId)
                 .query((rs, n) -> new QuickAccessItem(rs.getString("device_id"), rs.getString("channel"),
                         rs.getObject("scene_id") == null ? null : rs.getLong("scene_id"))).list();
     }
 
-    /** Replaces all slots; slot numbers follow the list order starting at 1. */
-    public void replaceQuickAccess(List<QuickAccessItem> items) {
-        jdbc.sql("delete from quick_access").update();
+    /** Replaces one person's slots; slot numbers follow the list order starting at 1. */
+    public void replaceQuickAccess(long userId, List<QuickAccessItem> items) {
+        jdbc.sql("delete from quick_access where user_id = ?").param(userId).update();
         for (int i = 0; i < items.size(); i++) {
             QuickAccessItem item = items.get(i);
-            jdbc.sql("insert into quick_access (position, device_id, channel, scene_id) values (?, ?, ?, ?)")
-                    .params(i + 1, item.deviceId(), item.channel(), item.sceneId()).update();
+            jdbc.sql("insert into quick_access (user_id, position, device_id, channel, scene_id) values (?, ?, ?, ?, ?)")
+                    .params(userId, i + 1, item.deviceId(), item.channel(), item.sceneId()).update();
+        }
+    }
+
+    /**
+     * Closes the gaps that removed pins leave (a forgotten device, a deleted scene), for everyone, so each person's
+     * slots stay 1..n.
+     */
+    public void compactQuickAccess() {
+        List<Long> people = jdbc.sql("select distinct user_id from quick_access").query(Long.class).list();
+        for (long userId : people) {
+            replaceQuickAccess(userId, quickAccess(userId));
         }
     }
 }

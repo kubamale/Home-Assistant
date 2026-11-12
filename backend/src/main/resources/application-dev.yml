@@ -2,6 +2,7 @@ app:
   auth:
     password: dev
     secure-cookies: false
+    secret-key: dev-only-secret-key
   calendar:
     mode: fake
 

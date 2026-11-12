@@ -20,6 +20,7 @@ services:
     environment:
       APP_PASSWORD: dev
       APP_SECURE_COOKIES: "false"
+      APP_SECRET_KEY: local-trial-secret-key
       APP_DEVICES_MODE: agent
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}

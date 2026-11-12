@@ -10,8 +10,8 @@ export function formatLocalHour(local: string): string {
   return local.slice(11, 16)
 }
 
-export function formatClock(now: Date, timeZone?: string): string {
-  return now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false, timeZone })
+export function formatClock(now: Date, timeZone?: string, hour12 = false): string {
+  return now.toLocaleTimeString([], { hour: hour12 ? 'numeric' : '2-digit', minute: '2-digit', hour12, timeZone })
 }
 
 export function formatDate(now: Date, timeZone?: string): string {

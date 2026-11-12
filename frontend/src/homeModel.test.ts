@@ -1,5 +1,5 @@
 import { hsvCss } from './color'
-import { availabilityNote, channelTitle, describeApply, groupDevices, isUnavailable, moveItem, pinnedItems, tileState, toPinItems } from './homeModel'
+import { availabilityNote, channelTitle, describeApply, groupDevices, isPinned, isUnavailable, moveItem, pinnedItems, samePin, tileState, toPinItems, togglePin } from './homeModel'
 import type { Channel, Device, Room, Scene } from './types'
 
 function channel(id: string, over: Partial<Channel> = {}): Channel {
@@ -33,8 +33,8 @@ describe('groupDevices', () => {
   })
 })
 
-const movie: Scene = { id: 7, name: 'Movie', kind: 'custom', quickAccess: 2, actions: [] }
-const unpinned: Scene = { id: 8, name: 'Reading', kind: 'custom', quickAccess: null, actions: [] }
+const movie: Scene = { id: 7, name: 'Movie', kind: 'custom', quickAccess: 2, shared: false, editable: true, actions: [] }
+const unpinned: Scene = { id: 8, name: 'Reading', kind: 'custom', quickAccess: null, shared: false, editable: true, actions: [] }
 
 describe('pinned items', () => {
   const bar = device('bar', { channels: [channel('main', { quickAccess: 3 }), channel('background', { quickAccess: 1 })] })
@@ -120,5 +120,33 @@ describe('hsvCss', () => {
     expect(hsvCss(120, 100)).toBe('hsl(120 100% 50%)')
     expect(hsvCss(200, 0)).toBe('hsl(200 0% 100%)')
     expect(hsvCss(240, 50)).toBe('hsl(240 100% 75%)')
+  })
+})
+
+
+describe('favourites', () => {
+  const lamp = { deviceId: 'lamp', channel: 'main' }
+  const bar = { deviceId: 'bar', channel: 'background' }
+
+  it('tells lights and scenes apart, and the same one from another', () => {
+    expect(samePin(lamp, { deviceId: 'lamp', channel: 'main' })).toBe(true)
+    expect(samePin(lamp, bar)).toBe(false)
+    expect(samePin({ sceneId: 3 }, { sceneId: 3 })).toBe(true)
+    expect(samePin({ sceneId: 3 }, { sceneId: 4 })).toBe(false)
+    expect(samePin(lamp, { sceneId: 3 })).toBe(false)
+    expect(isPinned([lamp, { sceneId: 3 }], { sceneId: 3 })).toBe(true)
+  })
+
+  it('adds a favourite at the end and takes it out again', () => {
+    const added = togglePin([lamp], bar)
+    expect(added).toEqual({ items: [lamp, bar], full: false })
+    expect(togglePin(added.items, lamp)).toEqual({ items: [bar], full: false })
+  })
+
+  it('refuses a fifth favourite and says so, instead of changing anything', () => {
+    const four = [lamp, bar, { sceneId: 1 }, { sceneId: 2 }]
+    expect(togglePin(four, { sceneId: 3 })).toEqual({ items: four, full: true })
+    // but a full list can always lose one
+    expect(togglePin(four, lamp).items).toHaveLength(3)
   })
 })

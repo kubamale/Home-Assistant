@@ -67,6 +67,7 @@ set from the environment (Spring's relaxed binding: `app.devices.command-timeout
 |---|---|---|---|
 | `APP_PASSWORD_HASH` | `app.auth.password-hash` | none | bcrypt hash of the login password. **Use this in production.** |
 | `APP_PASSWORD` | `app.auth.password` | none | Plain password for development; logs a warning. Set exactly one of the two or the app refuses to start. |
+| `APP_SECRET_KEY` | `app.auth.secret-key` | none | Any long random text (`openssl rand -base64 32`). Encrypts the calendar passwords people save in the app (AES-256-GCM). Without it people cannot save a calendar; the one calendar set up with `APP_CALENDAR_*` still works. Keep it: if it is lost or changed, saved calendars cannot be read and people connect them again (nothing else is affected). |
 | `APP_SECURE_COOKIES` | `app.auth.secure-cookies` | `true` | Sets the `Secure` flag on the session cookie. Only turn off for plain-HTTP local use. |
 | `app.auth.session-days` | | `90` | Lifetime of a phone login. |
 | `APP_DEVICES_MODE` | `app.devices.mode` | `fake` | `fake` (simulated lights) or `agent` (devices come from the home agent). |
@@ -135,11 +136,26 @@ Technology: Spring Boot 4.1 on Java 25, Spring Security 7, Spring MVC + WebSocke
 
 | Kind (role) | Who | How it authenticates | What it may do |
 |---|---|---|---|
-| `user` (`ROLE_USER`) | The person's phone or browser | Password login sets the `hd_session` cookie | Everything. |
-| `display` (`ROLE_DISPLAY`) | The wall touchscreen | Paired by code; gets the same cookie, valid for 5 years | Read everything it shows, tick tasks, switch lights, apply scenes. **Cannot organise** (no renaming, rooms, pinning, scene editing, settings, tokens). |
+| `user` (`ROLE_USER`, plus `ROLE_ADMIN` for the admin) | A person's phone or browser | Name and password login sets the `hd_session` cookie | Everything that is theirs (see below). The admin also manages the home. |
+| `display` (`ROLE_DISPLAY`) | A wall touchscreen | Paired by code; gets the same cookie, valid for 5 years | Read everything it shows, tick tasks, switch lights, apply scenes, all **as its owner**. **Cannot organise** (no renaming, rooms, pinning, scene editing, settings, tokens), even when its owner is the admin. |
 | `agent` (`ROLE_AGENT`) | The home agent | `Authorization: Bearer <token>` | Only open the `/agent/ws` WebSocket. |
 
-All three are rows in the `credential` table. Only the **SHA-256 hash** of a token is stored; the
+### People
+
+Each person has an account (`app_user`). A phone login and a display carry the `user_id` of the person they act as (the agent has none), and the data that is personal is looked up by it:
+
+| Per person | Shared by the whole home |
+|---|---|
+| tasks, quick access pins, calendar, personal scenes, the layout of each of their displays | rooms, devices, the location and weather, the voice settings, shared scenes (including the built-in *All off*) |
+
+- The **admin** is the account that existed before accounts did (migration `V7` gives it everything that already existed). It has no stored password: it signs in with the one configured for the server (`APP_PASSWORD_HASH`), with a blank name or its own. It cannot be removed.
+- The admin manages the home: rooms, renaming/forgetting devices, the location, the voice settings and its history, the agent token, who has an account, and shared scenes. Everyone else gets `403` on those. The admin's *display* is not an admin.
+- Other people sign in with name + password (bcrypt, 8 to 200 characters). A person changes their own password with the current one (their other phones are signed out); the admin can set anyone's.
+- A display belongs to the person it was approved for (the approver by default; the admin can approve for anyone; anyone else only for themselves). The admin can hand it to someone else (`PUT /api/credentials/{id}/user`); a person can only see, arrange, set the room of and remove their own displays (anything else answers `404`).
+- Removing a person deletes their tasks, pins, calendar, personal scenes, phone logins and displays (foreign keys with `on delete cascade`).
+- Someone else's task or personal scene looks like it does not exist (`404`), not forbidden.
+
+All three kinds are rows in the `credential` table. Only the **SHA-256 hash** of a token is stored; the
 token is shown once when created. Tokens are 32 random bytes, URL-safe Base64. A credential can be
 revoked (`revoked_at`) from Settings; a revoked token stops working immediately. `last_used_at` is
 updated at most once an hour to avoid a write per request.
@@ -149,14 +165,17 @@ The authoritative route table is `security/SecurityConfig.java`. In short:
 | Route | Who |
 |---|---|
 | `POST /api/auth/login`, `POST /api/auth/logout`, `POST /api/auth/pair/start`, `GET /api/auth/pair/poll`, `GET /api/health` | public |
-| `GET` of weather, tasks, calendar, devices, rooms, scenes, settings, stream, `auth/me`; `PATCH /api/tasks/*`; `POST /api/devices/*/power`, `/api/devices/*/channels/*`, `/api/scenes/*/apply` | user or display |
+| `GET` of weather, tasks, calendar, devices, rooms, scenes, settings, stream, `auth/me`; `PATCH /api/tasks/*`; `POST /api/devices/*/power`, `/api/devices/*/channels/*`, `/api/scenes/*/apply` | user or display (for their owner) |
+| `GET /api/display/config` | display |
+| `PUT /api/users/*/password` | user (own, with the current password) or admin (anyone's) |
+| rooms (`POST`, `PATCH`, `DELETE`, `PUT /order`), `PATCH`/`DELETE /api/devices/*`, `PUT /api/settings/location`, `PUT /api/voice/settings`, `GET /api/voice/history`, `POST /api/credentials/agent`, `PUT /api/credentials/*/user`, the rest of `/api/users` | admin |
 | `/agent/ws` | agent |
 | everything else under `/api/**` | user only |
 | anything else (the web app's files) | public, so the app can load before login |
 
 ### Login and rate limiting
 
-- One shared password for the household (bcrypt-verified). `POST /api/auth/login` returns the session
+- Name and password (bcrypt-verified); a blank name means the admin, which is how a one-password installation keeps signing in. A wrong name and a wrong password look the same, and cost the same time. `POST /api/auth/login` returns the session
   cookie: `HttpOnly`, `SameSite=Lax`, path `/`, `Secure` unless disabled, lifetime `session-days`.
 - `LoginRateLimiter`: **5 failures per 15 minutes** per key, then `429`. Keys: client address for
   login, client address for `pair/start` (every start counts), and the credential for `pair/approve`.
@@ -170,7 +189,7 @@ A device-code flow, modelled on how TVs sign in:
    display), `userCode` (8 characters shown as `ABCD-EFGH`, alphabet without 0/O/1/I/L), an approve
    path for the QR code, expiry 10 min, poll interval 2 s.
 2. The signed-in phone opens the approve link (or types the code) and calls
-   `POST /api/auth/pair/approve` with a label. A `display` credential is issued.
+   `POST /api/auth/pair/approve` with a label and, optionally, the `userId` the display is for. A `display` credential is issued for that person.
 3. The display polls `GET /api/auth/pair/poll?deviceCode=…`: `202` pending, `410` expired,
    `200` approved with the cookie. The token is handed over **once**, then forgotten.
 
@@ -198,23 +217,34 @@ JSON over HTTP, all under `/api`. "Role" is the minimum: **U** = user only, **U/
 
 | Method and path | Role | Body → result |
 |---|---|---|
-| `POST /api/auth/login` | public | `{password}` → `{role, label}` + cookie. `401` wrong password, `429` too many attempts. |
+| `POST /api/auth/login` | public | `{name?, password}` → `{role, label, userId, name, admin}` + cookie. `401` wrong name or password, `429` too many attempts. |
 | `POST /api/auth/logout` | public | Revokes the current credential, clears the cookie. |
-| `GET /api/auth/me` | U/D | `{role, label}` |
+| `GET /api/auth/me` | U/D | `{role, label, userId, name, admin}` |
 | `POST /api/auth/pair/start` | public | → `{deviceCode, userCode, approvePath, expiresIn, pollIntervalSeconds}` |
 | `GET /api/auth/pair/poll?deviceCode=` | public | `202` `{status:"pending"}`, `410` `{status:"expired"}`, `200` `{status:"approved"}` + cookie |
-| `POST /api/auth/pair/approve` | U | `{userCode, label?}` → `{id, label}`. `404` unknown/expired code. |
-| `GET /api/credentials` | U | → list of `{id, kind, label, createdAt, lastUsedAt, current, roomId}` (active only; `roomId` is set only for displays) |
-| `PUT /api/credentials/{id}/room` | U | `{roomId}` (or `null`): the room a **display** is in. `404` for an unknown room, an unknown credential, or one that is not a display. |
-| `DELETE /api/credentials/{id}` | U | Revoke. `404` if unknown. |
-| `POST /api/credentials/agent` | U | `{label}` → `{id, token}`. **The token is shown only here.** |
+| `POST /api/auth/pair/approve` | U | `{userCode, label?, userId?}` → `{id, label, userId, userName}`. `404` unknown/expired code or person, `403` for someone else's id unless admin. |
+| `GET /api/credentials` | U | → list of `{id, kind, label, createdAt, lastUsedAt, current, roomId, userId, userName}` (active only; a person's own, or everyone's for the admin; `roomId` is set only for displays) |
+| `PUT /api/credentials/{id}/room` | U | `{roomId}` (or `null`): the room a **display** is in. `404` for an unknown room, an unknown credential, one that is not theirs, or one that is not a display. |
+| `PUT /api/credentials/{id}/user` | admin | `{userId}`: hands a display to another person. |
+| `GET`/`PUT`/`DELETE /api/credentials/{id}/layout` | U (own displays) | The look of a display: read it (the default until set), save it, or go back to the default. See *Display layouts*. |
+| `DELETE /api/credentials/{id}` | U | Revoke (own; any for the admin). `404` if unknown. |
+| `POST /api/credentials/agent` | admin | `{label}` → `{id, token}`. **The token is shown only here.** |
+| `GET /api/display/config` | D | `{label, owner:{id,name}, layout}`: what a display asks for first. |
+| `GET /api/users` | admin | → `[{id, name, admin, createdAt}]` |
+| `POST /api/users` | admin | `{name, password}` → `201`. `409` name taken (ignoring case), `400` password under 8 characters. |
+| `PUT /api/users/{id}/name` | admin | `{name}` |
+| `PUT /api/users/{id}/password` | U / admin | `{password, currentPassword?}`. A person must give their current password. `400` for the admin's (it is set on the server). |
+| `DELETE /api/users/{id}` | admin | Removes the person and everything of theirs. `400` for the admin. |
 
 ### Weather, calendar, settings
 
 | Method and path | Role | Result |
 |---|---|---|
 | `GET /api/weather` | U/D | `{configured, data, fetchedAt, stale, lastError}`; `data` has `locationName`, `current` (temperature, apparent, `condition` key and label, wind, precipitation, `isDay`), `today` (min, max, rain probability, condition, sunrise, sunset) and `hourly[]`. `configured:false` until a place is saved. |
-| `GET /api/calendar/today` | U/D | `{configured, events[], nextEventId, fetchedAt, stale, lastError}`. Event: `id, title, allDay, start, end, date, location, calendar`. |
+| `GET /api/calendar/today` | U/D | The caller's own calendar: `{configured, events[], nextEventId, fetchedAt, stale, lastError}`. Event: `id, title, allDay, start, end, date, location, calendar`. |
+| `GET /api/calendar/connection` | U | `{connected, serverAccount, url, username, calendars}`. Never the password. |
+| `PUT /api/calendar/connection` | U | `{url?, username, password, calendars?}`: connects the caller's own CalDAV account after reading it once to check. `400` with the reason if it cannot be read, or the address is `http://`, on the server itself or a metadata address; `503` without `APP_SECRET_KEY`. |
+| `DELETE /api/calendar/connection` | U | Disconnects it. |
 | `GET /api/settings` | U/D | `{location}` (`name, latitude, longitude, timezone`, or `null`) |
 | `PUT /api/settings/location` | U | location → `{location}`. Validates coordinates and timezone (`400`). |
 | `GET /api/geocode?q=` | U | Place search (Open-Meteo). Returns `[]` for queries under 2 characters, `502` if the provider is down. |
@@ -223,7 +253,7 @@ JSON over HTTP, all under `/api`. "Role" is the minimum: **U** = user only, **U/
 
 | Method and path | Role | Notes |
 |---|---|---|
-| `GET /api/tasks?scope=today\|all` | U/D | `today` (default): open tasks that are undated or due today or earlier, plus tasks completed today. `all`: every open task plus those completed today. Items: `{id, title, dueDate, done, overdue}`. |
+| `GET /api/tasks?scope=today\|all` | U/D | The caller's own tasks. `today` (default): open tasks that are undated or due today or earlier, plus tasks completed today. `all`: every open task plus those completed today. Items: `{id, title, dueDate, done, overdue}`. |
 | `POST /api/tasks` | U | `{title, dueDate?}` → `201` |
 | `PATCH /api/tasks/{id}` | U/D | Any of `title, dueDate, clearDueDate, done`. **A display may only send `done`** (`403` otherwise). |
 | `DELETE /api/tasks/{id}` | U | |
@@ -237,7 +267,7 @@ JSON over HTTP, all under `/api`. "Role" is the minimum: **U** = user only, **U/
 | `POST /api/devices/{id}/channels/{channel}` | U/D | `ChannelChange` → the device. |
 | `PATCH /api/devices/{id}` | U | `{name?, roomId?, clearRoom?}`. A blank name restores the reported name. |
 | `DELETE /api/devices/{id}` | U | Forget a stored device (and its pins and scene actions). If the agent lists it again it returns, unassigned. |
-| `PUT /api/quick-access` | U | `{items:[{deviceId, channel} \| {sceneId}]}`, at most **4**, no duplicates. Replaces all slots in order. |
+| `PUT /api/quick-access` | U | `{items:[{deviceId, channel} \| {sceneId}]}`, at most **4**, no duplicates. Replaces **the caller's** slots in order (`GET /api/devices` and `/api/scenes` show the caller's own pins). A scene must be one they can see. |
 | `GET /api/rooms` | U/D | `{rooms:[{id, name, position}]}` |
 | `POST /api/rooms` | U | `{name}` → `201`. `409` if the name exists (case-insensitive). |
 | `PATCH /api/rooms/{id}` | U | `{name}` |
@@ -270,11 +300,11 @@ A device as returned by `GET /api/devices`:
 
 | Method and path | Role | Notes |
 |---|---|---|
-| `GET /api/scenes` | U/D | `{scenes:[{id, name, kind, quickAccess, actions[]}]}`. `kind` is `custom` or `all_off`. Actions carry names and current capabilities so the editor can render them. |
-| `POST /api/scenes` | U | `{name, actions:[{deviceId, channel, settings}]}` → `201` |
+| `GET /api/scenes` | U/D | `{scenes:[{id, name, kind, quickAccess, shared, editable, actions[]}]}`: the shared scenes and the caller's own, with the caller's pin slot. `kind` is `custom` or `all_off`. Actions carry names and current capabilities so the editor can render them. |
+| `POST /api/scenes` | U | `{name, actions:[{deviceId, channel, settings}], shared?}` → `201`. A scene is the caller's own unless `shared` (admin only, `403` otherwise). Scenes in the list carry `shared` and `editable`. |
 | `POST /api/scenes/capture` | U | `{name, channels:[{deviceId, channel}]}`: creates a scene from what those lights show right now. |
 | `PUT /api/scenes/{id}` | U | Replaces name and actions. The built-in scene can only be renamed (`actions` empty). |
-| `PUT /api/scenes/order` | U | `{sceneIds}`: every scene exactly once. |
+| `PUT /api/scenes/order` | U | `{sceneIds}`: every scene the caller can edit exactly once (their own; plus the shared ones for the admin). They take the places those scenes had, so other people's stay where they are. |
 | `DELETE /api/scenes/{id}` | U | `400` for the built-in "All off". |
 | `POST /api/scenes/{id}/apply` | U/D | → `{applied, failed:[{deviceId, deviceName, channel, reason}]}`. `503` if the agent is offline. |
 
@@ -295,7 +325,7 @@ A device as returned by `GET /api/devices`:
 
 | Method and path | Role | Notes |
 |---|---|---|
-| `GET /api/health` | public | `{"status":"up"}`; deliberately reveals nothing else. Used by the container health check and the kiosk's offline page. |
+| `GET /api/health` | public | `{"status":"up"}`; deliberately reveals nothing else. Used by the container health check and the Pi kiosk's offline page (the older display setup). |
 | `GET /api/stream` | U/D | Server-Sent Events, see below. |
 | `GET /agent/ws` | agent | WebSocket upgrade, see the agent protocol in [`agent/README.md`](../agent/README.md#6-wire-protocol). |
 
@@ -403,7 +433,7 @@ draw (`Condition`).
 
 ### Calendar
 
-`CalendarService` caches today's events for the saved timezone. Refresh: 8 s after start, then every
+`CalendarService` caches today's events for the saved timezone, **one cache per person**: a person sees the calendar they connected themselves (`user_calendar`, password encrypted with `APP_SECRET_KEY`), and so do their displays and the assistant. The admin, until they connect one, sees the account configured on the server (`APP_CALENDAR_*`); everyone else with none sees no calendar. In `fake` mode every login gets the sample events. A saved password that can no longer be decrypted counts as not connected. Refresh: 8 s after start, then every
 **5 minutes**, and on location change. Behaviour:
 
 - It never shows yesterday's events or events computed for another timezone (an old cache is treated as empty).
@@ -422,9 +452,21 @@ others. For iCloud, create an app-specific password at account.apple.com; rotate
 
 ### Tasks
 
-A simple list with optional due dates. "Today" is computed in the saved timezone. A ticked task stays
+A simple list with optional due dates, one list per person. "Today" is computed in the saved timezone. A ticked task stays
 visible until the day ends (`completed_at` is compared with today), so an accidental tick can be undone.
 `overdue` is derived, not stored.
+
+### Display layouts
+
+A display's look is a JSON document in `credential.layout` (null until its owner changes it, which means the default). Shape: `{columns: [{widgets: [{type, count?, hour12?}]}], voice, motion}`. `DisplayLayout.validated()` checks it and fills in what is missing, so what is saved is always complete:
+
+- 1 to 3 columns, each with 1 to 4 cards; a card type (`clock`, `weather`, `calendar`, `tasks`, `quickAccess`) appears at most once on a screen, so nothing can overflow it.
+- `count`: weather 3 to 8 (default 5), calendar 2 to 8 (5), tasks 2 to 8 (6). `hour12` only for the clock. Others have neither.
+- `voice`: whether the display listens for its wake word.
+- `motion`: whether the background moves with the weather. Optional when saving: a layout without it (saved before it existed, or sent by an older page) is stored as `false`, so it keeps its still background. The default layout has it on. It is a nullable `Boolean` in the record on purpose: a plain `boolean` made a stored layout without the field unreadable, which would have reset it to the default.
+- A saved layout that cannot be read falls back to the default (logged) rather than leaving the screen blank.
+
+Saving, resetting (and handing a display to someone else) publish `display.changed`, which the displays use to reload.
 
 ## 9. Data model and migrations
 
@@ -433,13 +475,15 @@ SQLite via Flyway (`src/main/resources/db/migration`). Timestamps are ISO-8601 t
 
 | Table | Purpose |
 |---|---|
-| `credential` | `id, kind (user/display/agent), token_hash (unique), label, created_at, last_used_at, revoked_at` |
-| `task` | `id, title, due_date, done, created_at, completed_at` |
+| `app_user` | `id, name (unique ignoring case), password_hash (null for the admin), admin, created_at`; row 1 is the admin |
+| `credential` | `id, kind (user/display/agent), token_hash (unique), label, created_at, last_used_at, revoked_at, room_id, user_id → app_user (cascade), layout (JSON, displays)` |
+| `user_calendar` | `user_id (PK), url, username, password (encrypted), calendars (JSON), updated_at` |
+| `task` | `id, user_id → app_user (cascade), title, due_date, done, created_at, completed_at` |
 | `setting` | key/value; today only `location` (JSON) |
 | `room` | `id, name, position`; unique on `lower(name)` |
 | `device` | `id (text), type, reported_name, name_override, room_id → room (on delete set null), channels (JSON), first_seen_at, last_seen_at` |
-| `quick_access` | `position 1..4 (PK), device_id + channel` **or** `scene_id`; a check constraint enforces exactly one |
-| `scene` | `id, name, position, kind (custom/all_off)`; unique on `lower(name)`; row 'All off' is seeded |
+| `quick_access` | `user_id, position 1..4` (together the PK, so four per person is a database rule), `device_id + channel` **or** `scene_id`; a check constraint enforces exactly one |
+| `scene` | `id, name, position, kind (custom/all_off), user_id` (null: shared); name unique across everyone's, ignoring case; row 'All off' is seeded, shared |
 | `voice_turn` | `at, source, transcript, reply, tools_used (JSON), outcome, model_ms, tools_ms`; trimmed after `app.voice.history-days` (30); never audio |
 | `scene_action` | `scene_id, device_id, channel, settings (JSON of the change), position`; unique per light per scene; cascades with scene and device |
 
@@ -451,8 +495,9 @@ SQLite via Flyway (`src/main/resources/db/migration`). Timestamps are ISO-8601 t
 | `V4__scenes.sql` | scenes and actions, the built-in scene, quick access can hold a scene (table rebuilt) |
 | `V5__voice_turn.sql` | the assistant's log of questions and outcomes |
 | `V6__display_room.sql` | `credential.room_id` (nullable, `on delete set null`): the room a display is in |
+| `V7__users.sql` | accounts: `app_user` (the admin is row 1), `user_id` on credentials, tasks and scenes, `credential.layout`, quick access per person (table rebuilt), `user_calendar`. Everything that existed becomes the admin's; scenes stay shared. `UserMigrationTest` upgrades a real V6 database to check this. |
 
-Rules: **never edit a migration that has run anywhere**; add `V7__…`. SQLite cannot alter
+Rules: **never edit a migration that has run anywhere**; add `V8__…`. SQLite cannot alter
 constraints in place, so changing one means rebuilding the table (create new, copy, drop, rename), as V3
 and V4 do. Foreign keys are enabled in the connection URL, and the schema relies on them
 (`on delete set null`, `cascade`).
@@ -466,7 +511,7 @@ Back up by copying the database file while the app is stopped, or with `sqlite3 
 ./mvnw test        # or: mvn test
 ```
 
-217 tests. Integration tests extend `IntegrationTest`: a full Spring context with `MockMvc`, an
+248 tests. Integration tests extend `IntegrationTest`: a full Spring context with `MockMvc`, an
 in-memory SQLite (`jdbc:sqlite::memory:?foreign_keys=true`, one connection that is never retired), a
 controllable `MutableClock`, a mocked weather client, and the fake device adapter. Before each test the
 base class empties the tables, re-seeds "All off", resets the fake lights and clears the rate limiter.
@@ -474,6 +519,9 @@ base class empties the tables, re-seeds "All off", resets the fake lights and cl
 | Test class | Covers |
 |---|---|
 | `AuthTest` | login, cookie flags, rate limit, roles per route, pairing flow, origin check, revocation |
+| `UsersTest` | accounts and their rules (sign-in, passwords, who may manage people and the home), tasks, pins and scenes belonging to one person, displays belonging to their owner, who may arrange which display, layout validation |
+| `PersonalCalendarTest` | connecting a person's own calendar against a fake CalDAV server, the password stored encrypted and never returned, a wrong password not saved, addresses on the server itself refused, a password that can no longer be decrypted |
+| `UserMigrationTest` | upgrading a real V6 database: everything that existed becomes the admin's |
 | `TaskTest` | creating, editing, "today" rules, overdue, display may only tick |
 | `SettingsAndWeatherTest`, `OpenMeteoParsingTest` | location validation, geocoding, caching and staleness, response parsing |
 | `CalendarTest`, `CalDavCalendarSourceTest`, `ICalExpanderTest`, `CalDavWiringTest` | caching rules, CalDAV discovery with a fake server, recurrence expansion, Spring wiring in `caldav` mode |

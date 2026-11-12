@@ -1,5 +1,12 @@
 # Smart Door Display – MVP
 
+> **Plan change (2026-11-12).** The hardware plan changed after this document was written: a **Raspberry Pi 5 at home is the server** (the app
+> in Docker, with the home agent beside it, talking to it on `127.0.0.1`), **Android tablets running a kiosk browser app are the wall
+> displays**, and phones reach the server from anywhere through **Tailscale or a Cloudflare Tunnel** (not yet chosen between the two; no router
+> ports are opened). Where this document says VPS, Pi 4, Waveshare touchscreen, a Pi as the door screen, a Pi kiosk or a USB speakerphone,
+> read it as **the earlier plan**. The current instructions are in [`deploy/README.md`](deploy/README.md) and the shopping list in
+> [`SHOPPING-LIST.md`](SHOPPING-LIST.md).
+
 *24 Oct 2026 · Kuba*
 
 ## Goal
